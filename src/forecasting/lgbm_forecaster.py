@@ -15,13 +15,14 @@ try:
     from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
     from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error, r2_score
     from sklearn.preprocessing import StandardScaler
+    from sklearn.base import BaseEstimator, RegressorMixin
 except ImportError as e:
     raise ImportError(f"Required packages not installed: {e}") from e
 
 logger = logging.getLogger(__name__)
 
 
-class LightGBMForecaster:
+class LightGBMForecaster(BaseEstimator, RegressorMixin):
     """
     LightGBM-based forecasting model for stock prices.
     
@@ -37,7 +38,7 @@ class LightGBMForecaster:
         forecast_horizon: int = 4,
         target_column: str = 'Close',
         hyperparameter_grid: Optional[Dict[str, List]] = None,
-        cv_folds: int = 5,
+        cv_folds: int = 3,
         random_state: int = 42,
         early_stopping_rounds: int = 50,
         verbose: bool = True
@@ -49,7 +50,7 @@ class LightGBMForecaster:
             forecast_horizon: Number of weeks to forecast ahead
             target_column: Name of the target column
             hyperparameter_grid: Grid for hyperparameter tuning
-            cv_folds: Number of cross-validation folds
+            cv_folds: Number of time series cross-validation folds (recommended: 2-3 for time series)
             random_state: Random state for reproducibility
             early_stopping_rounds: Early stopping rounds
             verbose: Whether to print training progress
@@ -78,6 +79,50 @@ class LightGBMForecaster:
         self.best_params = {}
         self.feature_names = []
         self.scaler = StandardScaler()
+    
+    def get_params(self, deep=True):
+        """Get parameters for this estimator."""
+        return {
+            'forecast_horizon': self.forecast_horizon,
+            'target_column': self.target_column,
+            'hyperparameter_grid': self.hyperparameter_grid,
+            'cv_folds': self.cv_folds,
+            'random_state': self.random_state,
+            'early_stopping_rounds': self.early_stopping_rounds,
+            'verbose': self.verbose
+        }
+    
+    def set_params(self, **params):
+        """Set parameters for this estimator."""
+        # Valid LightGBMForecaster parameters
+        valid_params = {
+            'forecast_horizon', 'target_column', 'hyperparameter_grid', 
+            'cv_folds', 'random_state', 'early_stopping_rounds', 'verbose'
+        }
+        
+        # Valid LightGBM parameters (will be passed to the model)
+        lgbm_params = {
+            'n_estimators', 'max_depth', 'learning_rate', 'num_leaves',
+            'subsample', 'colsample_bytree', 'reg_alpha', 'reg_lambda',
+            'min_child_samples', 'min_child_weight', 'min_split_gain',
+            'feature_fraction', 'bagging_fraction', 'bagging_freq',
+            'max_bin', 'min_data_in_leaf', 'lambda_l1', 'lambda_l2'
+        }
+        
+        for key, value in params.items():
+            if key in valid_params:
+                setattr(self, key, value)
+            elif key in lgbm_params:
+                # Store LightGBM parameters to be used when creating the model
+                if not hasattr(self, '_lgbm_params'):
+                    self._lgbm_params = {}
+                self._lgbm_params[key] = value
+            else:
+                # Allow other parameters to pass through (for compatibility)
+                if not hasattr(self, '_extra_params'):
+                    self._extra_params = {}
+                self._extra_params[key] = value
+        return self
         
     def fit(
         self, 
@@ -111,7 +156,7 @@ class LightGBMForecaster:
             logger.info("Performing hyperparameter tuning...")
             best_params = self._tune_hyperparameters(X_scaled, y)
         else:
-            # Use default parameters
+            # Use default parameters or parameters set via set_params
             best_params = {
                 'n_estimators': 200,
                 'max_depth': 5,
@@ -124,6 +169,10 @@ class LightGBMForecaster:
                 'random_state': self.random_state,
                 'verbose': -1
             }
+            
+            # Override with any parameters set via set_params
+            if hasattr(self, '_lgbm_params'):
+                best_params.update(self._lgbm_params)
         
         self.best_params = best_params
         

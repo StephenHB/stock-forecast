@@ -222,7 +222,7 @@ class TimeSeriesBacktester:
             estimator=base_model,
             param_grid=hyperparameter_grid,
             cv=tscv,
-            scoring=f'neg_{self.metric}',
+            scoring='neg_mean_absolute_percentage_error',
             n_jobs=-1,
             verbose=0
         )

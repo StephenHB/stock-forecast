@@ -71,7 +71,7 @@ class ForecastingPipeline:
         default_lgbm_params = {
             'forecast_horizon': forecast_horizon,
             'target_column': target_column,
-            'cv_folds': 5,
+            'cv_folds': 3,  # Use 3 folds for time series (faster and more appropriate)
             'random_state': 42,
             'early_stopping_rounds': 50,
             'verbose': True
@@ -162,14 +162,13 @@ class ForecastingPipeline:
         # Prepare data for backtesting
         backtest_data = self.forecasting_data.dropna()
         
-        # Hyperparameter grid for backtesting
+        # Hyperparameter grid for backtesting (reduced for faster time series validation)
         hyperparameter_grid = {
             'n_estimators': [100, 200],
-            'max_depth': [3, 5, 7],
-            'learning_rate': [0.05, 0.1, 0.2],
+            'max_depth': [3, 5],
+            'learning_rate': [0.1, 0.2],
             'num_leaves': [31, 63],
-            'subsample': [0.8, 0.9],
-            'colsample_bytree': [0.8, 0.9]
+            'subsample': [0.8, 0.9]
         }
         
         # Run backtesting for 1-week ahead prediction
