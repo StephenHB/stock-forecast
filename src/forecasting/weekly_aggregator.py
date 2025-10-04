@@ -92,6 +92,9 @@ class WeeklyAggregator:
         
         # Process each column with appropriate aggregation method
         for column in data.columns:
+            # Check if column is numeric
+            is_numeric = pd.api.types.is_numeric_dtype(data[column])
+            
             if column in self.price_columns:
                 # Use last value of the week (end-of-week price)
                 weekly_data[column] = data[column].resample(self.week_start).last()
@@ -103,28 +106,40 @@ class WeeklyAggregator:
                 method = self.aggregation_methods[column]
                 if method == 'last':
                     weekly_data[column] = data[column].resample(self.week_start).last()
-                elif method == 'sum':
+                elif method == 'sum' and is_numeric:
                     weekly_data[column] = data[column].resample(self.week_start).sum()
-                elif method == 'mean':
+                elif method == 'mean' and is_numeric:
                     weekly_data[column] = data[column].resample(self.week_start).mean()
-                elif method == 'max':
+                elif method == 'max' and is_numeric:
                     weekly_data[column] = data[column].resample(self.week_start).max()
-                elif method == 'min':
+                elif method == 'min' and is_numeric:
                     weekly_data[column] = data[column].resample(self.week_start).min()
                 else:
-                    # Default to mean for unknown methods
-                    weekly_data[column] = data[column].resample(self.week_start).mean()
+                    # Default to last for non-numeric or unknown methods
+                    weekly_data[column] = data[column].resample(self.week_start).last()
             else:
                 # Default aggregation based on column name patterns
                 if 'high' in column.lower() or 'max' in column.lower():
-                    weekly_data[column] = data[column].resample(self.week_start).max()
+                    if is_numeric:
+                        weekly_data[column] = data[column].resample(self.week_start).max()
+                    else:
+                        weekly_data[column] = data[column].resample(self.week_start).last()
                 elif 'low' in column.lower() or 'min' in column.lower():
-                    weekly_data[column] = data[column].resample(self.week_start).min()
+                    if is_numeric:
+                        weekly_data[column] = data[column].resample(self.week_start).min()
+                    else:
+                        weekly_data[column] = data[column].resample(self.week_start).last()
                 elif 'volume' in column.lower() or 'vol' in column.lower():
-                    weekly_data[column] = data[column].resample(self.week_start).sum()
+                    if is_numeric:
+                        weekly_data[column] = data[column].resample(self.week_start).sum()
+                    else:
+                        weekly_data[column] = data[column].resample(self.week_start).last()
                 else:
-                    # Default to mean for other columns
-                    weekly_data[column] = data[column].resample(self.week_start).mean()
+                    # Default to last for non-numeric columns, mean for numeric
+                    if is_numeric:
+                        weekly_data[column] = data[column].resample(self.week_start).mean()
+                    else:
+                        weekly_data[column] = data[column].resample(self.week_start).last()
         
         # Combine all weekly data
         weekly_df = pd.DataFrame(weekly_data)
