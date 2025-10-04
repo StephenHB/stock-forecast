@@ -92,6 +92,24 @@ from src.data_preprocess import create_features
 features_data = create_features(data_with_indicators, lookback_days=5)
 ```
 
+### 4. Visualize Stock Data
+
+```bash
+# Start Jupyter Lab
+uv run jupyter lab
+
+# Open the stock visualization notebook
+notebooks/stock_visualization.ipynb
+```
+
+The notebook provides comprehensive visualizations including:
+- Time series plots with moving averages
+- Comparative performance analysis
+- Volume analysis
+- Technical indicators (RSI, MACD, Bollinger Bands)
+- Correlation analysis
+- Recent performance trends
+
 ## Configuration
 
 Edit `config/stocks_config.yaml` to customize:

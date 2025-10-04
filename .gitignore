@@ -297,6 +297,8 @@ tmp/
 
 # Jupyter notebook outputs (keep notebooks but not outputs)
 *.ipynb
+# Allow specific notebooks
+!notebooks/stock_visualization.ipynb
 
 # Configuration files with sensitive data
 config/secrets.yaml
