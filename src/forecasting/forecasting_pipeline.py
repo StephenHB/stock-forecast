@@ -171,6 +171,10 @@ class ForecastingPipeline:
                 backtest_data.set_index('Date', inplace=True)
             else:
                 raise ValueError("Data must have datetime index for backtesting")
+        else:
+            # Data has datetime index, ensure it has a proper name
+            if backtest_data.index.name is None:
+                backtest_data.index.name = 'Date'
         
         # Hyperparameter grid for backtesting (reduced for faster time series validation)
         hyperparameter_grid = {
