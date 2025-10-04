@@ -220,6 +220,9 @@ class DynamicFeatureEngineer:
         # Start with original data
         features_data = data.copy()
         
+        # Ensure we preserve the datetime index
+        original_index = features_data.index
+        
         # Apply each transformer
         for name, transformer in self.transformers.items():
             logger.info(f"Applying {name} transformer...")
@@ -232,6 +235,10 @@ class DynamicFeatureEngineer:
                     new_features = transformer.transform(features_data)
                     # Add new features to dataset
                     features_data = pd.concat([features_data, new_features], axis=1)
+                    
+                    # Ensure datetime index is preserved
+                    if not isinstance(features_data.index, pd.DatetimeIndex) and isinstance(original_index, pd.DatetimeIndex):
+                        features_data.index = original_index
             except Exception as e:
                 logger.warning(f"Error applying {name} transformer: {e}")
                 continue

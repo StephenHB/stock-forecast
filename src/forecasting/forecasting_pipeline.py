@@ -162,6 +162,16 @@ class ForecastingPipeline:
         # Prepare data for backtesting
         backtest_data = self.forecasting_data.dropna()
         
+        # Ensure data has datetime index
+        if not isinstance(backtest_data.index, pd.DatetimeIndex):
+            logger.warning("Forecasting data doesn't have datetime index, attempting to fix...")
+            # Try to reset index and set Date column as index
+            if 'Date' in backtest_data.columns:
+                backtest_data['Date'] = pd.to_datetime(backtest_data['Date'])
+                backtest_data.set_index('Date', inplace=True)
+            else:
+                raise ValueError("Data must have datetime index for backtesting")
+        
         # Hyperparameter grid for backtesting (reduced for faster time series validation)
         hyperparameter_grid = {
             'n_estimators': [100, 200],
