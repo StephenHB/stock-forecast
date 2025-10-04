@@ -1,0 +1,128 @@
+# Stock Configuration File
+# This file defines which stocks to download and analyze
+
+# Default configuration for top 100 S&P 500 stocks
+default_stocks:
+  # Technology sector
+  - AAPL  # Apple Inc.
+  - MSFT  # Microsoft Corporation
+  - GOOGL # Alphabet Inc. Class A
+  - GOOG  # Alphabet Inc. Class C
+  - AMZN  # Amazon.com Inc.
+  - NVDA  # NVIDIA Corporation
+  - META  # Meta Platforms Inc.
+  - TSLA  # Tesla Inc.
+  - NFLX  # Netflix Inc.
+  - ADBE  # Adobe Inc.
+  
+  # Financial sector
+  - JPM   # JPMorgan Chase & Co.
+  - BAC   # Bank of America Corporation
+  - WFC   # Wells Fargo & Company
+  - GS    # Goldman Sachs Group Inc.
+  - MS    # Morgan Stanley
+  - C     # Citigroup Inc.
+  - AXP   # American Express Company
+  - V     # Visa Inc.
+  - MA    # Mastercard Incorporated
+  - PYPL  # PayPal Holdings Inc.
+  
+  # Healthcare sector
+  - JNJ   # Johnson & Johnson
+  - PFE   # Pfizer Inc.
+  - UNH   # UnitedHealth Group Incorporated
+  - ABBV  # AbbVie Inc.
+  - MRK   # Merck & Co. Inc.
+  - TMO   # Thermo Fisher Scientific Inc.
+  - ABT   # Abbott Laboratories
+  - DHR   # Danaher Corporation
+  - BMY   # Bristol Myers Squibb Company
+  - AMGN  # Amgen Inc.
+  
+  # Consumer sector
+  - PG    # Procter & Gamble Company
+  - KO    # The Coca-Cola Company
+  - PEP   # PepsiCo Inc.
+  - WMT   # Walmart Inc.
+  - HD    # The Home Depot Inc.
+  - MCD   # McDonald's Corporation
+  - SBUX  # Starbucks Corporation
+  - NKE   # Nike Inc.
+  - TGT   # Target Corporation
+  - COST  # Costco Wholesale Corporation
+  
+  # Industrial sector
+  - BA    # The Boeing Company
+  - CAT   # Caterpillar Inc.
+  - GE    # General Electric Company
+  - HON   # Honeywell International Inc.
+  - UPS   # United Parcel Service Inc.
+  - FDX   # FedEx Corporation
+  - LMT   # Lockheed Martin Corporation
+  - RTX   # Raytheon Technologies Corporation
+  - DE    # Deere & Company
+  - MMM   # 3M Company
+  
+  # Energy sector
+  - XOM   # Exxon Mobil Corporation
+  - CVX   # Chevron Corporation
+  - COP   # ConocoPhillips
+  - EOG   # EOG Resources Inc.
+  - SLB   # Schlumberger Limited
+  - OXY   # Occidental Petroleum Corporation
+  - MPC   # Marathon Petroleum Corporation
+  - VLO   # Valero Energy Corporation
+  - PSX   # Phillips 66
+  - KMI   # Kinder Morgan Inc.
+  
+  # Communication sector
+  - VZ    # Verizon Communications Inc.
+  - T     # AT&T Inc.
+  - CMCSA # Comcast Corporation
+  - DIS   # The Walt Disney Company
+  - CHTR  # Charter Communications Inc.
+  - TMUS  # T-Mobile US Inc.
+  - EA    # Electronic Arts Inc.
+  - ATVI  # Activision Blizzard Inc.
+  - ZM    # Zoom Video Communications Inc.
+  
+  # Materials sector
+  - LIN   # Linde plc
+  - APD   # Air Products and Chemicals Inc.
+  - SHW   # Sherwin-Williams Company
+  - ECL   # Ecolab Inc.
+  - PPG   # PPG Industries Inc.
+  - NEM   # Newmont Corporation
+  - FCX   # Freeport-McMoRan Inc.
+  - DOW   # Dow Inc.
+  - DD    # DuPont de Nemours Inc.
+  - NUE   # Nucor Corporation
+  
+  # Real Estate sector
+  - AMT   # American Tower Corporation
+  - PLD   # Prologis Inc.
+  - CCI   # Crown Castle Inc.
+  - EQIX  # Equinix Inc.
+  - PSA   # Public Storage
+  - EXR   # Extra Space Storage Inc.
+  - AVB   # AvalonBay Communities Inc.
+  - EQR   # Equity Residential
+  - MAA   # Mid-America Apartment Communities Inc.
+  - UDR   # UDR Inc.
+
+# Data download settings
+download_settings:
+  start_date: "2020-01-01"
+  end_date: null  # null means current date
+  interval: "1d"  # 1d, 5d, 1wk, 1mo, 3mo
+  auto_adjust: true
+  prepost: false
+  threads: true
+  proxy: null
+
+# Data storage settings
+storage_settings:
+  data_format: "csv"  # csv, parquet, pickle
+  save_raw_data: true
+  save_processed_data: true
+  compression: null  # gzip, bz2, xz, zstd

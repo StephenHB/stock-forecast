@@ -61,7 +61,7 @@
     \notebooks\: code testing place when developing.
     \test\: the path to save unit tests
     \README.md: the code documentation
-    \requirements.txt: dependencies
+    \pyproject.toml: dependencies with UC
     Note: if we have multiple models, then under \src\model\, \data\, and \src\data_preprocess\ we will create different folders under them for different models. If we have resuable functions, create \src\model\model_utils.py, \src\data_preprocess\data_preprocess_utils.py
 
     Key Conventions:
