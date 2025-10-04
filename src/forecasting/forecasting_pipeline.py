@@ -44,7 +44,7 @@ class ForecastingPipeline:
         Args:
             target_column: Target column to predict
             forecast_horizon: Number of weeks to forecast ahead
-            backtest_windows: Number of backtest windows (months)
+            backtest_windows: Number of backtest windows (quarters)
             hyperparameter_tuning: Whether to perform hyperparameter tuning
             feature_engineering_config: Configuration for feature engineering
             lgbm_params: LightGBM model parameters
@@ -81,12 +81,12 @@ class ForecastingPipeline:
         
         self.lgbm_forecaster = LightGBMForecaster(**default_lgbm_params)
         
-        # Default backtesting parameters
+        # Default backtesting parameters (quarterly)
         default_backtest_params = {
-            'initial_train_size': 52,  # 1 year
-            'test_size': forecast_horizon,
-            'step_size': 4,  # 4 weeks
-            'min_train_size': 26,  # 6 months
+            'initial_train_size': 13,  # 1 year of quarterly data (52 weeks / 4)
+            'test_size': 1,  # 1 quarter ahead
+            'step_size': 1,  # Move forward 1 quarter each iteration
+            'min_train_size': 6,  # Minimum 1.5 years of training data
             'metric': 'mape'
         }
         if backtest_params:

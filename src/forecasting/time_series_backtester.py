@@ -27,10 +27,10 @@ class TimeSeriesBacktester:
     
     def __init__(
         self,
-        initial_train_size: int = 52,  # 1 year of weekly data
-        test_size: int = 4,  # 4 weeks ahead
-        step_size: int = 4,  # Move forward 4 weeks each iteration
-        min_train_size: int = 26,  # Minimum 6 months of training data
+        initial_train_size: int = 13,  # 1 year of quarterly data (52 weeks / 4)
+        test_size: int = 1,  # 1 quarter ahead
+        step_size: int = 1,  # Move forward 1 quarter each iteration
+        min_train_size: int = 6,  # Minimum 1.5 years of training data
         metric: str = 'mape',  # Primary metric for optimization
         additional_metrics: Optional[List[str]] = None
     ):
@@ -38,10 +38,10 @@ class TimeSeriesBacktester:
         Initialize the time series backtester.
         
         Args:
-            initial_train_size: Initial training window size (weeks)
-            test_size: Test window size (weeks)
-            step_size: Step size for moving window (weeks)
-            min_train_size: Minimum training window size (weeks)
+            initial_train_size: Initial training window size (quarters)
+            test_size: Test window size (quarters)
+            step_size: Step size for moving window (quarters)
+            min_train_size: Minimum training window size (quarters)
             metric: Primary metric for optimization
             additional_metrics: Additional metrics to track
         """
