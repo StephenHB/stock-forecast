@@ -162,6 +162,11 @@ class ForecastingPipeline:
         # Prepare data for backtesting
         backtest_data = self.forecasting_data.dropna()
         
+        # Debug logging
+        logger.info(f"Backtest data index type: {type(backtest_data.index)}")
+        logger.info(f"Backtest data index name: {backtest_data.index.name}")
+        logger.info(f"Is DatetimeIndex: {isinstance(backtest_data.index, pd.DatetimeIndex)}")
+        
         # Ensure data has datetime index
         if not isinstance(backtest_data.index, pd.DatetimeIndex):
             logger.warning("Forecasting data doesn't have datetime index, attempting to fix...")
