@@ -126,9 +126,7 @@ class StockDataLoader:
                 if data is not None and not data.empty:
                     stock_data[symbol] = data
                     
-                    # Save individual stock data if requested
-                    if save_data:
-                        self._save_stock_data(symbol, data, 'raw')
+                    # Individual files are no longer saved - only combined data
                         
                 else:
                     failed_downloads.append(symbol)
@@ -261,7 +259,7 @@ class StockDataLoader:
     
     def load_saved_data(self, symbol: Optional[str] = None, subdir: str = 'raw') -> Union[pd.DataFrame, Dict[str, pd.DataFrame]]:
         """
-        Load previously saved stock data.
+        Load previously saved stock data from the combined data file.
         
         Args:
             symbol: Specific stock symbol to load. If None, loads all available data.
@@ -275,50 +273,39 @@ class StockDataLoader:
         
         data_dir = self.data_dir / subdir
         
-        if symbol:
-            # Load specific stock data
-            file_path = data_dir / f"{symbol}.{data_format}"
-            
-            if not file_path.exists():
-                raise FileNotFoundError(f"Data file not found: {file_path}")
-            
-            try:
-                if data_format == 'csv':
-                    return pd.read_csv(file_path)
-                elif data_format == 'parquet':
-                    return pd.read_parquet(file_path)
-                elif data_format == 'pickle':
-                    return pd.read_pickle(file_path)
-            except Exception as e:
-                logger.error(f"Error loading data for {symbol}: {e}")
-                raise
+        # Always load from combined data file
+        combined_file_path = data_dir / f"combined_stock_data.{data_format}"
         
-        else:
-            # Load all available stock data
-            stock_data = {}
-            pattern = f"*.{data_format}"
+        if not combined_file_path.exists():
+            raise FileNotFoundError(f"Combined data file not found: {combined_file_path}")
+        
+        try:
+            # Load combined data
+            if data_format == 'csv':
+                combined_data = pd.read_csv(combined_file_path)
+            elif data_format == 'parquet':
+                combined_data = pd.read_parquet(combined_file_path)
+            elif data_format == 'pickle':
+                combined_data = pd.read_pickle(combined_file_path)
+            else:
+                raise ValueError(f"Unsupported data format: {data_format}")
             
-            for file_path in data_dir.glob(pattern):
-                if file_path.name.startswith('combined_'):
-                    continue  # Skip combined files
+            if symbol:
+                # Filter for specific symbol
+                symbol_data = combined_data[combined_data['Symbol'] == symbol].copy()
+                if symbol_data.empty:
+                    raise FileNotFoundError(f"No data found for symbol: {symbol}")
+                return symbol_data
+            else:
+                # Return dictionary of DataFrames for all symbols
+                stock_data = {}
+                for sym in combined_data['Symbol'].unique():
+                    stock_data[sym] = combined_data[combined_data['Symbol'] == sym].copy()
+                return stock_data
                 
-                symbol = file_path.stem
-                
-                try:
-                    if data_format == 'csv':
-                        data = pd.read_csv(file_path)
-                    elif data_format == 'parquet':
-                        data = pd.read_parquet(file_path)
-                    elif data_format == 'pickle':
-                        data = pd.read_pickle(file_path)
-                    
-                    stock_data[symbol] = data
-                    
-                except Exception as e:
-                    logger.error(f"Error loading data for {symbol}: {e}")
-            
-            logger.info(f"Loaded data for {len(stock_data)} stocks")
-            return stock_data
+        except Exception as e:
+            logger.error(f"Error loading data: {e}")
+            raise
     
     def get_data_summary(self, stock_data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         """
@@ -421,9 +408,7 @@ class StockDataLoader:
                             
                             updated_data[symbol] = combined_data
                             
-                            # Save updated data
-                            if save_data:
-                                self._save_stock_data(symbol, combined_data, 'raw')
+                            # Individual files are no longer saved - only combined data
                             
                             logger.info(f"Updated {symbol}: {len(new_data)} new records, total: {len(combined_data)}")
                         else:
@@ -446,8 +431,7 @@ class StockDataLoader:
                     if full_data is not None and not full_data.empty:
                         updated_data[symbol] = full_data
                         
-                        if save_data:
-                            self._save_stock_data(symbol, full_data, 'raw')
+                        # Individual files are no longer saved - only combined data
                         
                         logger.info(f"Downloaded full dataset for {symbol}: {len(full_data)} records")
                     else:
@@ -456,9 +440,17 @@ class StockDataLoader:
             except Exception as e:
                 logger.error(f"Error updating data for {symbol}: {e}")
         
-        # Save combined updated data
+        # Save combined updated data (preserve all existing data)
         if save_data and updated_data:
-            self._save_combined_data(updated_data)
+            # Load all existing data to preserve non-updated stocks
+            try:
+                existing_all_data = self.load_saved_data(subdir='raw')
+                # Update with new data
+                existing_all_data.update(updated_data)
+                self._save_combined_data(existing_all_data)
+            except FileNotFoundError:
+                # No existing combined data, save only updated data
+                self._save_combined_data(updated_data)
         
         logger.info(f"Data update completed for {len(updated_data)} stocks")
         return updated_data
