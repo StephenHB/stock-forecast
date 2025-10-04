@@ -334,10 +334,15 @@ class DynamicFeatureEngineer:
         
         # Separate features and target
         feature_columns = [col for col in training_data.columns 
-                          if not col.startswith('target_') and col != self.target_column]
+                          if not col.startswith('target_') and col != self.target_column
+                          and pd.api.types.is_numeric_dtype(training_data[col])]
         
         X = training_data[feature_columns]
         y = training_data[f'target_{target_horizon}w']
+        
+        # Ensure y is a Series, not DataFrame
+        if isinstance(y, pd.DataFrame):
+            y = y.iloc[:, 0]  # Take first column if DataFrame
         
         logger.info(f"Training data prepared: {len(X)} samples, {len(feature_columns)} features")
         return X, y

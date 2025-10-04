@@ -178,8 +178,7 @@ class ForecastingPipeline:
             model_class=LightGBMForecaster,
             model_params={
                 'forecast_horizon': 1,  # Use 1-week for backtesting
-                'target_column': self.target_column,
-                'hyperparameter_tuning': False  # Will be done in backtest
+                'target_column': self.target_column
             },
             target_column=self.target_column,
             hyperparameter_tuning=self.hyperparameter_tuning,

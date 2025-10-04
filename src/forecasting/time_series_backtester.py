@@ -86,7 +86,8 @@ class TimeSeriesBacktester:
         
         # Prepare data
         if feature_columns is None:
-            feature_columns = [col for col in data.columns if col != target_column]
+            feature_columns = [col for col in data.columns 
+                              if col != target_column and pd.api.types.is_numeric_dtype(data[col])]
         
         # Ensure data is sorted by date
         if not isinstance(data.index, pd.DatetimeIndex):
@@ -112,6 +113,12 @@ class TimeSeriesBacktester:
             y_train = train_data[target_column]
             X_test = test_data[feature_columns]
             y_test = test_data[target_column]
+            
+            # Ensure targets are Series, not DataFrames
+            if isinstance(y_train, pd.DataFrame):
+                y_train = y_train.iloc[:, 0]
+            if isinstance(y_test, pd.DataFrame):
+                y_test = y_test.iloc[:, 0]
             
             # Hyperparameter tuning if requested
             if hyperparameter_tuning and hyperparameter_grid:
