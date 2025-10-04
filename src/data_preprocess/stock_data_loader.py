@@ -257,12 +257,13 @@ class StockDataLoader:
         except Exception as e:
             logger.error(f"Error saving combined data: {e}")
     
-    def load_saved_data(self, symbol: Optional[str] = None, subdir: str = 'raw') -> Union[pd.DataFrame, Dict[str, pd.DataFrame]]:
+    def load_saved_data(self, symbol: Optional[Union[str, List[str]]] = None, subdir: str = 'raw') -> Union[pd.DataFrame, Dict[str, pd.DataFrame]]:
         """
         Load previously saved stock data from the combined data file.
         
         Args:
-            symbol: Specific stock symbol to load. If None, loads all available data.
+            symbol: Specific stock symbol(s) to load. Can be a string, list of strings, or None.
+                   If None, loads all available data.
             subdir: Subdirectory to load from ('raw' or 'processed').
             
         Returns:
@@ -291,11 +292,27 @@ class StockDataLoader:
                 raise ValueError(f"Unsupported data format: {data_format}")
             
             if symbol:
-                # Filter for specific symbol
-                symbol_data = combined_data[combined_data['Symbol'] == symbol].copy()
-                if symbol_data.empty:
-                    raise FileNotFoundError(f"No data found for symbol: {symbol}")
-                return symbol_data
+                # Handle both single symbol and list of symbols
+                if isinstance(symbol, str):
+                    # Single symbol
+                    symbol_data = combined_data[combined_data['Symbol'] == symbol].copy()
+                    if symbol_data.empty:
+                        raise FileNotFoundError(f"No data found for symbol: {symbol}")
+                    return symbol_data
+                elif isinstance(symbol, list):
+                    # List of symbols - return dictionary
+                    stock_data = {}
+                    for sym in symbol:
+                        sym_data = combined_data[combined_data['Symbol'] == sym].copy()
+                        if not sym_data.empty:
+                            stock_data[sym] = sym_data
+                        else:
+                            logger.warning(f"No data found for symbol: {sym}")
+                    if not stock_data:
+                        raise FileNotFoundError(f"No data found for any of the symbols: {symbol}")
+                    return stock_data
+                else:
+                    raise ValueError(f"Symbol must be a string, list of strings, or None, got: {type(symbol)}")
             else:
                 # Return dictionary of DataFrames for all symbols
                 stock_data = {}
