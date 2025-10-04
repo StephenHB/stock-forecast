@@ -122,7 +122,6 @@ storage_settings:
 
 ## Usage Examples
 
-### Basic Usage
 Run the example script to see the system in action:
 
 ```bash
@@ -137,24 +136,12 @@ This will:
 5. Save processed data to `/Users/stephenzhang/Downloads/stock_data`
 6. Generate summary statistics
 
-### Incremental Updates
-Use the incremental update functionality to keep data current:
+### Advanced Usage
 
-```bash
-python simple_update_example.py
-```
-
-This will:
-1. Check data freshness
-2. Update only stale data
-3. Show last update dates
-
-### Custom Data Paths
-Use custom data storage locations:
-
-```bash
-python custom_data_path_example.py
-```
+The system also supports:
+- **Incremental Updates**: Use `loader.update_stock_data()` to download only new data
+- **Data Freshness Checking**: Use `loader.check_data_freshness()` to monitor data age
+- **Custom Data Paths**: Specify custom storage locations with `StockDataLoader(data_dir="/path/to/data")`
 
 ## Data Features
 
