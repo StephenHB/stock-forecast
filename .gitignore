@@ -267,6 +267,9 @@ data/processed/*.xls
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
+# Note: Stock data is now stored in /Users/stephenzhang/Downloads/stock_data
+# This location is outside the project directory and won't be tracked by git
+
 # Model files
 models/
 *.pkl

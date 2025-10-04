@@ -34,10 +34,10 @@ class StockDataLoader:
         
         Args:
             config_path: Path to the YAML configuration file. If None, uses default config.
-            data_dir: Directory to save downloaded data. If None, uses './data'.
+            data_dir: Directory to save downloaded data. If None, uses '/Users/stephenzhang/Downloads/stock_data'.
         """
         self.config_path = config_path or self._get_default_config_path()
-        self.data_dir = Path(data_dir) if data_dir else Path('./data')
+        self.data_dir = Path(data_dir) if data_dir else Path('/Users/stephenzhang/Downloads/stock_data')
         self.config = self._load_config()
         
         # Create data directory if it doesn't exist
@@ -349,3 +349,218 @@ class StockDataLoader:
             summary_data.append(summary)
         
         return pd.DataFrame(summary_data)
+    
+    def update_stock_data(
+        self, 
+        stock_symbols: Optional[List[str]] = None,
+        days_back: int = 7,
+        save_data: bool = True
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        Update existing stock data by appending only the latest data.
+        
+        This function checks the last date in existing data and downloads only
+        the new data since that date, then appends it to the existing dataset.
+        
+        Args:
+            stock_symbols: List of stock symbols to update. If None, uses config default.
+            days_back: Number of days to look back for updates (safety buffer).
+            save_data: Whether to save updated data to files.
+            
+        Returns:
+            Dictionary with updated stock data.
+        """
+        stock_symbols = stock_symbols or self.get_stock_list()
+        updated_data = {}
+        
+        logger.info(f"Updating data for {len(stock_symbols)} stocks")
+        
+        for symbol in tqdm(stock_symbols, desc="Updating stock data"):
+            try:
+                # Load existing data
+                existing_data = self._load_existing_data(symbol)
+                
+                if existing_data is not None and not existing_data.empty:
+                    # Get the last date from existing data (convert to timezone-naive)
+                    last_date = pd.to_datetime(existing_data['Date']).max()
+                    if last_date.tz is not None:
+                        last_date = last_date.tz_localize(None)
+                    
+                    start_date = last_date + pd.Timedelta(days=1)
+                    
+                    # Add safety buffer to ensure we don't miss any data
+                    start_date = start_date - pd.Timedelta(days=days_back)
+                    
+                    logger.info(f"Updating {symbol} from {start_date.date()}")
+                    
+                    # Download new data
+                    new_data = self._download_single_stock(
+                        symbol, 
+                        start_date=start_date, 
+                        end_date=None,  # Current date
+                        interval=self.config.get('download_settings', {}).get('interval', '1d')
+                    )
+                    
+                    if new_data is not None and not new_data.empty:
+                        # Convert new_data Date column to timezone-naive for comparison
+                        new_data = new_data.copy()
+                        new_data['Date'] = pd.to_datetime(new_data['Date'])
+                        if new_data['Date'].dt.tz is not None:
+                            new_data['Date'] = new_data['Date'].dt.tz_localize(None)
+                        
+                        # Remove any overlapping data (in case of safety buffer)
+                        new_data = new_data[new_data['Date'] > last_date]
+                        
+                        if not new_data.empty:
+                            # Combine existing and new data
+                            combined_data = pd.concat([existing_data, new_data], ignore_index=True)
+                            combined_data = combined_data.sort_values('Date').reset_index(drop=True)
+                            
+                            # Remove duplicates based on Date
+                            combined_data = combined_data.drop_duplicates(subset=['Date'], keep='last')
+                            
+                            updated_data[symbol] = combined_data
+                            
+                            # Save updated data
+                            if save_data:
+                                self._save_stock_data(symbol, combined_data, 'raw')
+                            
+                            logger.info(f"Updated {symbol}: {len(new_data)} new records, total: {len(combined_data)}")
+                        else:
+                            logger.info(f"No new data available for {symbol}")
+                            updated_data[symbol] = existing_data
+                    else:
+                        logger.warning(f"No new data downloaded for {symbol}")
+                        updated_data[symbol] = existing_data
+                        
+                else:
+                    # No existing data, download full dataset
+                    logger.info(f"No existing data found for {symbol}, downloading full dataset")
+                    full_data = self._download_single_stock(
+                        symbol,
+                        start_date=self.config.get('download_settings', {}).get('start_date', '2020-01-01'),
+                        end_date=None,
+                        interval=self.config.get('download_settings', {}).get('interval', '1d')
+                    )
+                    
+                    if full_data is not None and not full_data.empty:
+                        updated_data[symbol] = full_data
+                        
+                        if save_data:
+                            self._save_stock_data(symbol, full_data, 'raw')
+                        
+                        logger.info(f"Downloaded full dataset for {symbol}: {len(full_data)} records")
+                    else:
+                        logger.error(f"Failed to download data for {symbol}")
+                        
+            except Exception as e:
+                logger.error(f"Error updating data for {symbol}: {e}")
+        
+        # Save combined updated data
+        if save_data and updated_data:
+            self._save_combined_data(updated_data)
+        
+        logger.info(f"Data update completed for {len(updated_data)} stocks")
+        return updated_data
+    
+    def _load_existing_data(self, symbol: str) -> Optional[pd.DataFrame]:
+        """
+        Load existing data for a specific stock symbol.
+        
+        Args:
+            symbol: Stock symbol to load data for.
+            
+        Returns:
+            DataFrame with existing data or None if not found.
+        """
+        try:
+            data = self.load_saved_data(symbol=symbol, subdir='raw')
+            if data is not None and not data.empty:
+                # Ensure Date column is properly formatted as datetime
+                data = data.copy()
+                data['Date'] = pd.to_datetime(data['Date'], utc=True)
+                data['Date'] = data['Date'].dt.tz_localize(None)
+            return data
+        except FileNotFoundError:
+            return None
+        except Exception as e:
+            logger.error(f"Error loading existing data for {symbol}: {e}")
+            return None
+    
+    def get_last_update_date(self, symbol: str) -> Optional[pd.Timestamp]:
+        """
+        Get the last update date for a specific stock.
+        
+        Args:
+            symbol: Stock symbol to check.
+            
+        Returns:
+            Last update date or None if no data exists.
+        """
+        try:
+            existing_data = self._load_existing_data(symbol)
+            if existing_data is not None and not existing_data.empty:
+                last_date = pd.to_datetime(existing_data['Date']).max()
+                # Convert to timezone-naive for consistency
+                if last_date.tz is not None:
+                    last_date = last_date.tz_localize(None)
+                return last_date
+            return None
+        except Exception as e:
+            logger.error(f"Error getting last update date for {symbol}: {e}")
+            return None
+    
+    def check_data_freshness(self, stock_symbols: Optional[List[str]] = None) -> pd.DataFrame:
+        """
+        Check the freshness of existing data for given stocks.
+        
+        Args:
+            stock_symbols: List of stock symbols to check. If None, uses config default.
+            
+        Returns:
+            DataFrame with freshness information for each stock.
+        """
+        stock_symbols = stock_symbols or self.get_stock_list()
+        freshness_data = []
+        
+        for symbol in stock_symbols:
+            last_date = self.get_last_update_date(symbol)
+            current_date = pd.Timestamp.now().normalize()
+            
+            if last_date is not None:
+                # Ensure both dates are timezone-naive for comparison
+                if last_date.tz is not None:
+                    last_date = last_date.tz_localize(None)
+                if current_date.tz is not None:
+                    current_date = current_date.tz_localize(None)
+                
+                days_old = (current_date - last_date).days
+                is_weekend = current_date.weekday() >= 5
+                
+                # Adjust for weekends (markets are closed)
+                if is_weekend and days_old <= 2:
+                    days_old = 0
+                elif is_weekend and days_old <= 3:
+                    days_old = days_old - 2
+                
+                freshness_status = "Fresh" if days_old <= 1 else "Stale" if days_old <= 7 else "Very Stale"
+                
+                freshness_info = {
+                    'Symbol': symbol,
+                    'Last_Update': last_date,
+                    'Days_Old': days_old,
+                    'Status': freshness_status,
+                    'Needs_Update': days_old > 1
+                }
+            else:
+                freshness_info = {
+                    'Symbol': symbol,
+                    'Last_Update': None,
+                    'Days_Old': None,
+                    'Status': 'No Data',
+                    'Needs_Update': True
+                }
+            
+            freshness_data.append(freshness_info)
+        
+        return pd.DataFrame(freshness_data)

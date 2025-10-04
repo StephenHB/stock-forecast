@@ -10,6 +10,8 @@ A comprehensive stock forecasting system with machine learning models for analyz
 - **Technical Indicators**: Calculate various technical indicators (RSI, MACD, Bollinger Bands, etc.)
 - **Feature Engineering**: Create machine learning features with lag variables and rolling statistics
 - **Flexible Storage**: Save data in multiple formats (CSV, Parquet, Pickle)
+- **Incremental Updates**: Efficiently update data by downloading only new records
+- **Centralized Storage**: Data stored in `/Users/stephenzhang/Downloads/stock_data`
 
 ## Project Structure
 
@@ -21,9 +23,9 @@ stock-forecast/
 │   │   ├── stock_data_loader.py  # Main data loading functionality
 │   │   └── data_preprocess_utils.py  # Utility functions
 │   └── model/                    # Machine learning models (to be implemented)
-├── data/                         # Data storage
-│   ├── raw/                      # Raw downloaded data
-│   └── processed/                # Processed and feature-engineered data
+├── data/                         # Local data directory (for structure only)
+│   ├── raw/                      # Raw downloaded data (moved to Downloads)
+│   └── processed/                # Processed data (moved to Downloads)
 ├── config/
 │   └── stocks_config.yaml        # Stock selection and download configuration
 ├── notebooks/                    # Jupyter notebooks for development
@@ -52,8 +54,11 @@ pip install -e .
 ```python
 from src.data_preprocess import StockDataLoader
 
-# Initialize the data loader
+# Initialize the data loader (uses default path: /Users/stephenzhang/Downloads/stock_data)
 loader = StockDataLoader()
+
+# Or use a custom data directory
+loader = StockDataLoader(data_dir="/path/to/your/custom/data")
 
 # Download data for specific stocks
 stock_data = loader.download_stock_data(
@@ -117,6 +122,7 @@ storage_settings:
 
 ## Usage Examples
 
+### Basic Usage
 Run the example script to see the system in action:
 
 ```bash
@@ -128,8 +134,27 @@ This will:
 2. Validate and clean the data
 3. Calculate technical indicators
 4. Create machine learning features
-5. Save processed data
+5. Save processed data to `/Users/stephenzhang/Downloads/stock_data`
 6. Generate summary statistics
+
+### Incremental Updates
+Use the incremental update functionality to keep data current:
+
+```bash
+python simple_update_example.py
+```
+
+This will:
+1. Check data freshness
+2. Update only stale data
+3. Show last update dates
+
+### Custom Data Paths
+Use custom data storage locations:
+
+```bash
+python custom_data_path_example.py
+```
 
 ## Data Features
 
