@@ -300,6 +300,7 @@ tmp/
 # Allow specific notebooks
 !notebooks/stock_forecasting.ipynb
 !notebooks/data_refresh.ipynb
+!notebooks/backtesting.ipynb
 
 # Configuration files with sensitive data
 config/secrets.yaml
