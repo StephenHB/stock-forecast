@@ -299,6 +299,7 @@ tmp/
 *.ipynb
 # Allow specific notebooks
 !notebooks/stock_visualization.ipynb
+!notebooks/stock_forecasting.ipynb
 
 # Configuration files with sensitive data
 config/secrets.yaml
