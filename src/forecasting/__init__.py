@@ -28,6 +28,7 @@ from src.forecasting.weekly_aggregator import WeeklyAggregator
 from src.forecasting.dynamic_feature_engineer import DynamicFeatureEngineer
 from src.forecasting.lgbm_forecaster import LightGBMForecaster
 from src.forecasting.time_series_backtester import TimeSeriesBacktester
+from src.forecasting.standalone_backtester import StandaloneBacktester
 from src.forecasting.forecasting_pipeline import ForecastingPipeline
 
 __all__ = [
@@ -35,5 +36,6 @@ __all__ = [
     'DynamicFeatureEngineer', 
     'LightGBMForecaster',
     'TimeSeriesBacktester',
+    'StandaloneBacktester',
     'ForecastingPipeline'
 ]
