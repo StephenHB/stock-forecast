@@ -298,7 +298,6 @@ tmp/
 # Jupyter notebook outputs (keep notebooks but not outputs)
 *.ipynb
 # Allow specific notebooks
-!notebooks/stock_visualization.ipynb
 !notebooks/stock_forecasting.ipynb
 
 # Configuration files with sensitive data
@@ -344,6 +343,20 @@ yarn-error.log*
 # uv specific
 .uv/
 uv.lock
+
+# Backtesting results
+backtesting_results_*.json
+results_*.json
+
+# Example and test files
+example_*.py
+test_*.py
+*_example.py
+*_test.py
+
+# Temporary notebooks
+*_temp.ipynb
+*_backup.ipynb
 
 # Keep important config files
 !config/stocks_config.yaml
