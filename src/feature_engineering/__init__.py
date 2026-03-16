@@ -36,16 +36,18 @@ from .rolling_features import RollingFeatures
 from .technical_indicators import TechnicalIndicators
 from .time_features import TimeFeatures
 from .difference_features import DifferenceFeatures
+from .daily_volatility_features import DailyVolatilityFeatures
 
 __all__ = [
     'BaseFeatureTransformer',
-    'FeaturePipeline', 
+    'FeaturePipeline',
     'FourierTransformer',
     'LagFeatures',
     'RollingFeatures',
     'TechnicalIndicators',
     'TimeFeatures',
-    'DifferenceFeatures'
+    'DifferenceFeatures',
+    'DailyVolatilityFeatures',
 ]
 
 def create_feature_pipeline(transformers):
