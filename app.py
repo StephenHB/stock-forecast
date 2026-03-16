@@ -432,6 +432,11 @@ def main():
                 })
         if bt_rows:
             st.dataframe(pd.DataFrame(bt_rows), use_container_width=True, hide_index=True)
+            st.caption(
+                "**Risk Rating** is derived from backtest MAPE: "
+                "Low (<3%), Medium (3–7%), Moderate-High (7–12%), High (>12%). "
+                "Lower MAPE indicates higher forecast confidence."
+            )
 
         # ═══════════════════════════════════════════════════════════════
         # 2b. Volatility analysis
