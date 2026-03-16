@@ -30,6 +30,11 @@ from src.forecasting.lgbm_forecaster import LightGBMForecaster
 from src.forecasting.time_series_backtester import TimeSeriesBacktester
 from src.forecasting.standalone_backtester import StandaloneBacktester
 from src.forecasting.forecasting_pipeline import ForecastingPipeline
+from src.forecasting.trading_simulator import (
+    run_simulation,
+    run_multi_stock_simulation,
+    SimulationResult,
+)
 
 __all__ = [
     'WeeklyAggregator',
@@ -37,5 +42,8 @@ __all__ = [
     'LightGBMForecaster',
     'TimeSeriesBacktester',
     'StandaloneBacktester',
-    'ForecastingPipeline'
+    'ForecastingPipeline',
+    'run_simulation',
+    'run_multi_stock_simulation',
+    'SimulationResult',
 ]

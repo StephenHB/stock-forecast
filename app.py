@@ -19,7 +19,11 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.data_preprocess.stock_data_loader import StockDataLoader
-from src.forecasting import WeeklyAggregator, StandaloneBacktester
+from src.forecasting import (
+    WeeklyAggregator,
+    StandaloneBacktester,
+    run_multi_stock_simulation,
+)
 from src.research import CapitalMarketResearcher
 from src.forecasting.feature_factory import (
     create_daily_features,
@@ -128,6 +132,9 @@ def run_backtest(
                 returns.std() * np.sqrt(periods) * 100 if len(returns) > 1 else 0.0
             )
 
+            # Price series for trading simulation (same frequency as backtest)
+            price_series = data["Close"] if "Close" in data.columns else data.iloc[:, 0]
+
             results[symbol] = {
                 "mape": metrics["mape"] * 100,
                 "rmse": metrics["rmse"],
@@ -138,6 +145,7 @@ def run_backtest(
                 "dates": bt_results["dates"],
                 "volatility_pct": volatility_annual,
                 "forecast_days": forecast_days,
+                "price_series": price_series,
             }
         except Exception as e:
             results[symbol] = {"error": str(e)}
@@ -300,6 +308,26 @@ def main():
             )
             forecast_results = run_forecast(
                 stock_data, forecast_weeks, forecast_days, backtest_results
+            )
+
+        # Trading simulation: 100k total, split equally across stocks
+        initial_cash_total = 100_000.0
+        n_stocks = len([s for s in selected_stocks if s in backtest_results and "error" not in backtest_results.get(s, {})])
+        cash_per_stock = initial_cash_total / n_stocks if n_stocks > 0 else 0.0
+
+        price_series_by_symbol = {}
+        for sym in selected_stocks:
+            if sym in backtest_results and "error" not in backtest_results[sym]:
+                ps = backtest_results[sym].get("price_series")
+                if ps is not None:
+                    price_series_by_symbol[sym] = ps
+
+        sim_results = {}
+        if price_series_by_symbol:
+            sim_results = run_multi_stock_simulation(
+                backtest_results,
+                price_series_by_symbol,
+                initial_cash_per_stock=cash_per_stock,
             )
 
         # Main content
@@ -503,6 +531,59 @@ def main():
                     bt_df.index.name = "Date"
                     st.line_chart(bt_df, use_container_width=True)
                     st.caption("Backtest predictions vs actual close price (weekly)")
+
+        # ═══════════════════════════════════════════════════════════
+        # 4. Trading Simulation (100k, buy on up forecast, sell on down)
+        # ═══════════════════════════════════════════════════════════
+        st.subheader("💰 Trading Simulation")
+        st.caption(
+            f"Assume ${initial_cash_total:,.0f} total cash, split equally across stocks. "
+            "Buy when forecast says price will go up, sell when forecast says down. "
+            "Each period: either sell all shares or buy with all available cash."
+        )
+        valid_sim_stocks = [
+            s for s in selected_stocks
+            if s in sim_results and sim_results[s] is not None
+        ]
+        if valid_sim_stocks:
+            # Summary table
+            sim_rows = []
+            total_final = 0.0
+            for sym in valid_sim_stocks:
+                res = sim_results[sym]
+                total_final += res.final_value
+                sim_rows.append({
+                    "Stock": sym,
+                    "Initial ($)": f"${res.initial_cash:,.0f}",
+                    "Final Value ($)": f"${res.final_value:,.0f}",
+                    "Gain/Loss (%)": f"{res.total_return_pct:+.1f}%",
+                    "Buys": res.n_buys,
+                    "Sells": res.n_sells,
+                })
+            sim_rows.append({
+                "Stock": "**Total**",
+                "Initial ($)": f"${initial_cash_total:,.0f}",
+                "Final Value ($)": f"${total_final:,.0f}",
+                "Gain/Loss (%)": f"{(total_final - initial_cash_total) / initial_cash_total * 100:+.1f}%",
+                "Buys": "—",
+                "Sells": "—",
+            })
+            st.dataframe(
+                pd.DataFrame(sim_rows),
+                use_container_width=True,
+                hide_index=True,
+            )
+            # Equity curves
+            st.markdown("**Portfolio value over test period**")
+            sim_tabs = st.tabs(valid_sim_stocks)
+            for tab, sym in zip(sim_tabs, valid_sim_stocks):
+                res = sim_results[sym]
+                with tab:
+                    eq_df = res.equity_curve.to_frame(name="Portfolio Value ($)")
+                    eq_df.index.name = "Date"
+                    st.line_chart(eq_df, use_container_width=True)
+        else:
+            st.info("No simulation results available.")
 
         # Historical price chart (optional, at very bottom)
         st.subheader("📈 Historical Prices")
