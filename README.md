@@ -219,6 +219,16 @@ This project uses Cursor agent skills and rules for consistent AI assistance:
 
 ## Contributing
 
+### Pull Request Workflow
+
+1. Create a feature branch: `git checkout -b feat/your-feature`
+2. Make changes, commit with `type(scope): subject` format
+3. Push: `git push -u origin feat/your-feature`
+4. Open a PR on GitHub: **Pull requests** → **New pull request** → base: `main`, compare: your branch
+5. Merge via the PR (do not merge directly to `main`)
+
+### Code Standards
+
 1. Follow the coding standards in `.cursor/rules/` and `.cursor/skills/stock-forecast-analysis/`
 2. Use functional programming where appropriate
 3. Implement rigorous statistical validation
