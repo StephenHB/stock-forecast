@@ -1,6 +1,6 @@
-# Daily Forecasting Accuracy
+# Stock Forecast Tasks
 
-## Status
+## Daily Forecasting Accuracy (merged)
 
 - [x] Create branch feat/daily-forecasting-accuracy
 - [x] Build research agent with online search for forecasting algorithms
@@ -21,3 +21,12 @@ When forecast horizon <= 5 days, the app now uses:
 - `src/forecasting/feature_factory.py` - Feature creation for daily vs weekly
 - `app.py` - Dual-path backtest/forecast (daily when horizon <= 5)
 - `pyproject.toml` - Optional research dependency
+
+## Capital Market Researcher Agent (feat/capital-market-researcher-agent)
+
+- [x] Create branch
+- [x] Search financial reports (10-K, 10-Q, SEC) via ResearchAgent
+- [x] Fetch top 10 company news via yfinance
+- [x] Build short-run impact features: news_count, news_recency_days, earnings_announcement_days_ago, last_earnings_surprise_pct
+- [x] Build long-run impact features: revenue_growth_yoy, net_income_growth_yoy, pe_ratio, profit_margin, avg_earnings_surprise_pct, financial_reports_found
+- [x] Integrate into app (expander section)
