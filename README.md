@@ -47,6 +47,14 @@ cd stock-forecast
 pip install -e .
 ```
 
+### Running the UI (Streamlit)
+
+```bash
+streamlit run app.py
+```
+
+Interactive UI for stock selection, forecast horizon (n days), and backtesting (default: 2 years).
+
 ## Quick Start
 
 ### 1. Download Stock Data
@@ -207,6 +215,7 @@ This project uses Cursor agent skills and rules for consistent AI assistance:
 - **`.cursor/skills/stock-forecast-analysis/`** — Data analysis, ML, and visualization guidance (applied when working with notebooks, pandas, scikit-learn, etc.)
 - **`.cursor/skills/testing-agent/`** — Testing guidance: verify new features work as designed and integrate with existing workflows
 - **`.cursor/skills/git-agent/`** — Git commit, push, and pull request assistance when there are significant changes
+- **`.cursor/skills/ui-agent/`** — Interactive UI guidance (Streamlit, dashboards, stock selection)
 
 ## Contributing
 
