@@ -316,6 +316,30 @@ def main():
         # Main content
         st.success(f"✅ Processed {len(stock_data)} stocks")
 
+        # Analysis and forecast dates (top of UI)
+        analysis_date = None
+        for sym in selected_stocks:
+            if sym in stock_data:
+                df = stock_data[sym]
+                date_col = "Date" if "Date" in df.columns else ("Datetime" if "Datetime" in df.columns else None)
+                if date_col:
+                    analysis_date = pd.to_datetime(df[date_col]).max()
+                elif isinstance(df.index, pd.DatetimeIndex):
+                    analysis_date = df.index.max()
+                if analysis_date is not None:
+                    break
+        if analysis_date is None:
+            analysis_date = pd.Timestamp(end_date)
+        analysis_date = pd.Timestamp(analysis_date)
+        forecast_target_date = analysis_date + pd.offsets.BDay(forecast_days)
+        current_dt = datetime.now().strftime("%Y-%m-%d %H:%M")
+        st.markdown(
+            f"**Current date:** {current_dt} &nbsp;&nbsp;|&nbsp;&nbsp; "
+            f"**Analysis date:** {analysis_date.strftime('%Y-%m-%d')} &nbsp;&nbsp;|&nbsp;&nbsp; "
+            f"**Forecast target date:** {forecast_target_date.strftime('%Y-%m-%d')}"
+        )
+        st.divider()
+
         # Backtest results - sidebar summary
         st.sidebar.header("📊 Backtest Summary")
         for sym in selected_stocks:
@@ -334,49 +358,59 @@ def main():
                 st.sidebar.error(f"{sym}: {backtest_results[sym]['error']}")
 
         # ═══════════════════════════════════════════════════════════════
-        # 1. TOP: Predicted prices with risk rating and volatility
+        # 1. TOP: Predicted prices table (key values)
         # ═══════════════════════════════════════════════════════════════
         st.subheader("🔮 Predicted Prices")
         st.caption(
             f"Forecast for next {forecast_days} day(s) ahead "
             f"(~{forecast_weeks} week(s), business days)"
         )
-        pred_cols = st.columns(min(len(selected_stocks), 4))
-        for i, sym in enumerate(selected_stocks):
+        pred_rows = []
+        pred_directions = []  # 1=up, -1=down, 0=neutral/N/A
+        for sym in selected_stocks:
             if sym in forecast_results and "error" not in forecast_results[sym]:
                 r = forecast_results[sym]
                 preds = r.get("predictions", {})
+                pred_price = list(preds.values())[0] if preds else None
                 last = r.get("last_price")
                 risk = r.get("risk_rating", "—")
                 vol = r.get("volatility_pct")
-                with pred_cols[i % len(pred_cols)]:
-                    pred_price = list(preds.values())[0] if preds else None
-                    if pred_price is not None:
-                        st.metric(
-                            sym,
-                            f"${pred_price:,.2f}",
-                            f"In {forecast_days} days (last: ${last:,.2f})" if last else f"In {forecast_days} days",
-                        )
-                        st.caption(f"**Risk:** {risk}")
-                        if vol is not None:
-                            st.caption(f"**Volatility:** {vol:.1f}% ann.")
-                    else:
-                        st.metric(sym, "N/A", f"Last: ${last:,.2f}" if last else "N/A")
+                if pred_price is not None and last is not None:
+                    pred_directions.append(1 if pred_price > last else (-1 if pred_price < last else 0))
+                else:
+                    pred_directions.append(0)
+                pred_rows.append({
+                    "Stock": sym,
+                    "Predicted Price": f"${pred_price:,.2f}" if pred_price is not None else "N/A",
+                    "Last Price": f"${last:,.2f}" if last is not None else "—",
+                    "Risk Rating": risk,
+                    "Volatility (ann. %)": f"{vol:.1f}" if vol is not None else "—",
+                })
             elif sym in forecast_results:
-                with pred_cols[i % len(pred_cols)]:
-                    st.error(f"{sym}: {forecast_results[sym].get('error', 'Failed')}")
-        # Single-horizon chart (predicted vs last price)
-        horizon_data = {}
-        for sym in selected_stocks:
-            if sym in forecast_results and "error" not in forecast_results[sym]:
-                preds = forecast_results[sym].get("predictions", {})
-                last = forecast_results[sym].get("last_price")
-                if preds and last is not None:
-                    horizon_data[sym] = {"Last": last, "Predicted": list(preds.values())[0]}
-        if horizon_data:
-            horizon_df = pd.DataFrame(horizon_data)
-            st.bar_chart(horizon_df, use_container_width=True)
-            st.caption("Predicted vs last close price")
+                pred_directions.append(0)
+                pred_rows.append({
+                    "Stock": sym,
+                    "Predicted Price": "N/A",
+                    "Last Price": "—",
+                    "Risk Rating": "—",
+                    "Volatility (ann. %)": "—",
+                })
+        if pred_rows:
+            pred_df = pd.DataFrame(pred_rows)
+
+            def _color_pred(col):
+                if col.name != "Predicted Price":
+                    return [""] * len(col)
+                return [
+                    "color: green" if d == 1 else ("color: red" if d == -1 else "")
+                    for d in pred_directions
+                ]
+
+            st.dataframe(
+                pred_df.style.apply(_color_pred, axis=0),
+                use_container_width=True,
+                hide_index=True,
+            )
 
         # ═══════════════════════════════════════════════════════════════
         # 2. MIDDLE: Statistical metrics with risk and volatility
