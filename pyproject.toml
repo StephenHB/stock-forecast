@@ -49,6 +49,9 @@ dev = [
     "flake8>=6.0.0",
     "mypy>=1.0.0",
 ]
+research = [
+    "duckduckgo-search>=4.0.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/stephenzhang/stock-forecast"

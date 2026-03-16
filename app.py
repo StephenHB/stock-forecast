@@ -20,6 +20,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.data_preprocess.stock_data_loader import StockDataLoader
 from src.forecasting import WeeklyAggregator, StandaloneBacktester
+from src.forecasting.feature_factory import (
+    create_daily_features,
+    create_weekly_features,
+    create_daily_targets,
+    create_weekly_targets,
+    get_feature_columns,
+)
 
 # Page config
 st.set_page_config(page_title="Stock Forecast", page_icon="📈", layout="wide")
@@ -60,34 +67,16 @@ def run_backtest(
     forecast_horizon_weeks: int,
     forecast_days: int,
 ) -> dict:
-    """Run backtesting for each stock. Target variable matches horizon (N days ahead)."""
-    weekly_aggregator = WeeklyAggregator(
-        price_columns=["Open", "High", "Low", "Close"],
-        volume_columns=["Volume"],
+    """Run backtesting. Uses daily data + volatility features when horizon <= 5 days."""
+    use_daily = forecast_days <= 5
+    weekly_aggregator = (
+        WeeklyAggregator(
+            price_columns=["Open", "High", "Low", "Close"],
+            volume_columns=["Volume"],
+        )
+        if not use_daily
+        else None
     )
-
-    def create_features(data):
-        f = data.copy()
-        for lag in [1, 2, 4]:
-            f[f"close_lag_{lag}"] = f["Close"].shift(lag)
-        for w in [4, 8]:
-            f[f"close_ma_{w}"] = f["Close"].rolling(window=w).mean()
-            f[f"close_std_{w}"] = f["Close"].rolling(window=w).std()
-        f["price_change_1w"] = f["Close"].pct_change(1)
-        f["price_change_4w"] = f["Close"].pct_change(4)
-        f["volume_ma_4"] = f["Volume"].rolling(window=4).mean()
-        f["volume_ratio"] = f["Volume"] / f["volume_ma_4"]
-        f["week_of_year"] = f.index.isocalendar().week
-        f["month"] = f.index.month
-        f["quarter"] = f.index.quarter
-        return f
-
-    def create_targets(data, h: int):
-        """Create target = Close price h weeks ahead (matches forecast horizon)."""
-        t = data.copy()
-        t[f"target_{h}w"] = t["Close"].shift(-h)
-        t[f"target_{h}w_pct"] = (t["Close"].shift(-h) - t["Close"]) / t["Close"] * 100
-        return t
 
     results = {}
     for symbol, daily_df in stock_data.items():
@@ -96,35 +85,47 @@ def run_backtest(
             if "Date" in daily.columns:
                 daily["Date"] = pd.to_datetime(daily["Date"], utc=True).dt.tz_localize(None)
                 daily.set_index("Date", inplace=True)
-            weekly = weekly_aggregator.aggregate(daily)
-            features = create_features(weekly)
-            targets = create_targets(features, forecast_horizon_weeks)
-            data = targets.dropna()
-            if len(data) < 20:
+            cols = {c: c.replace(" ", "_") for c in daily.columns if " " in c}
+            daily = daily.rename(columns=cols)
+
+            if use_daily:
+                features = create_daily_features(daily)
+                data = create_daily_targets(features, forecast_days)
+                target_col = f"target_{forecast_days}d"
+                initial_train = 260
+                min_train = 60
+                returns = daily["Close"].pct_change().dropna()
+                periods = 252
+            else:
+                weekly = weekly_aggregator.aggregate(daily)
+                features = create_weekly_features(weekly)
+                data = create_weekly_targets(features, forecast_horizon_weeks)
+                target_col = f"target_{forecast_horizon_weeks}w"
+                initial_train = 13
+                min_train = 6
+                returns = weekly["Close"].pct_change().dropna()
+                periods = 52
+
+            data = data.dropna()
+            min_rows = 60 if use_daily else 20
+            if len(data) < min_rows:
                 continue
 
-            target_col = f"target_{forecast_horizon_weeks}w"
-            feature_columns = [
-                c for c in data.columns
-                if c != target_col
-                and not c.startswith("target_")
-                and pd.api.types.is_numeric_dtype(data[c])
-            ]
+            feature_columns = get_feature_columns(data, target_col)
 
             backtester = StandaloneBacktester(
-                initial_train_size=13,
+                initial_train_size=initial_train,
                 test_size=1,
                 step_size=1,
-                min_train_size=6,
+                min_train_size=min_train,
                 target_column=target_col,
-                forecast_horizon=forecast_horizon_weeks,
+                forecast_horizon=forecast_horizon_weeks if not use_daily else forecast_days,
             )
             bt_results = backtester.backtest(data, feature_columns=feature_columns)
             metrics = bt_results["overall_metrics"]
-
-            # Compute volatility (annualized std of weekly returns)
-            weekly_returns = weekly["Close"].pct_change().dropna()
-            volatility_annual = weekly_returns.std() * np.sqrt(52) * 100 if len(weekly_returns) > 1 else 0.0
+            volatility_annual = (
+                returns.std() * np.sqrt(periods) * 100 if len(returns) > 1 else 0.0
+            )
 
             results[symbol] = {
                 "mape": metrics["mape"] * 100,
@@ -148,35 +149,19 @@ def run_forecast(
     forecast_days: int,
     backtest_results: dict,
 ) -> dict:
-    """Run forecast using same model logic as backtest (train on full data, predict next period)."""
+    """Run forecast. Uses daily data + volatility features when horizon <= 5 days."""
     import lightgbm as lgb
     from sklearn.preprocessing import StandardScaler
 
-    weekly_aggregator = WeeklyAggregator(
-        price_columns=["Open", "High", "Low", "Close"],
-        volume_columns=["Volume"],
+    use_daily = forecast_days <= 5
+    weekly_aggregator = (
+        WeeklyAggregator(
+            price_columns=["Open", "High", "Low", "Close"],
+            volume_columns=["Volume"],
+        )
+        if not use_daily
+        else None
     )
-
-    def create_features(data):
-        f = data.copy()
-        for lag in [1, 2, 4]:
-            f[f"close_lag_{lag}"] = f["Close"].shift(lag)
-        for w in [4, 8]:
-            f[f"close_ma_{w}"] = f["Close"].rolling(window=w).mean()
-            f[f"close_std_{w}"] = f["Close"].rolling(window=w).std()
-        f["price_change_1w"] = f["Close"].pct_change(1)
-        f["price_change_4w"] = f["Close"].pct_change(4)
-        f["volume_ma_4"] = f["Volume"].rolling(window=4).mean()
-        f["volume_ratio"] = f["Volume"] / f["volume_ma_4"]
-        f["week_of_year"] = f.index.isocalendar().week
-        f["month"] = f.index.month
-        f["quarter"] = f.index.quarter
-        return f
-
-    def create_targets(data, h: int):
-        t = data.copy()
-        t[f"target_{h}w"] = t["Close"].shift(-h)
-        return t
 
     best_params = {
         "n_estimators": 200,
@@ -201,21 +186,24 @@ def run_forecast(
                 daily.set_index("Date", inplace=True)
             cols = {c: c.replace(" ", "_") for c in daily.columns if " " in c}
             daily = daily.rename(columns=cols)
-            weekly = weekly_aggregator.aggregate(daily)
-            features = create_features(weekly)
-            targets = create_targets(features, forecast_horizon_weeks)
-            data = targets.dropna()
-            if len(data) < 20:
+
+            if use_daily:
+                features = create_daily_features(daily)
+                data = create_daily_targets(features, forecast_days)
+                target_col = f"target_{forecast_days}d"
+            else:
+                weekly = weekly_aggregator.aggregate(daily)
+                features = create_weekly_features(weekly)
+                data = create_weekly_targets(features, forecast_horizon_weeks)
+                target_col = f"target_{forecast_horizon_weeks}w"
+
+            data = data.dropna()
+            min_rows = 60 if use_daily else 20
+            if len(data) < min_rows:
                 results[symbol] = {"error": "Insufficient data"}
                 continue
 
-            target_col = f"target_{forecast_horizon_weeks}w"
-            feature_columns = [
-                c for c in data.columns
-                if c != target_col
-                and not c.startswith("target_")
-                and pd.api.types.is_numeric_dtype(data[c])
-            ]
+            feature_columns = get_feature_columns(data, target_col)
 
             X = data[feature_columns]
             y = data[target_col]
@@ -361,9 +349,13 @@ def main():
         # 1. TOP: Predicted prices table (key values)
         # ═══════════════════════════════════════════════════════════════
         st.subheader("🔮 Predicted Prices")
+        mode_note = (
+            "daily data + volatility features"
+            if forecast_days <= 5
+            else f"~{forecast_weeks} week(s), business days"
+        )
         st.caption(
-            f"Forecast for next {forecast_days} day(s) ahead "
-            f"(~{forecast_weeks} week(s), business days)"
+            f"Forecast for next {forecast_days} day(s) ahead ({mode_note})"
         )
         pred_rows = []
         pred_directions = []  # 1=up, -1=down, 0=neutral/N/A
@@ -440,6 +432,11 @@ def main():
                 })
         if bt_rows:
             st.dataframe(pd.DataFrame(bt_rows), use_container_width=True, hide_index=True)
+            st.caption(
+                "**Risk Rating** is derived from backtest MAPE: "
+                "Low (<3%), Medium (3–7%), Moderate-High (7–12%), High (>12%). "
+                "Lower MAPE indicates higher forecast confidence."
+            )
 
         # ═══════════════════════════════════════════════════════════════
         # 2b. Volatility analysis
