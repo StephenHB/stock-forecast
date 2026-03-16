@@ -49,3 +49,35 @@ Build interactive UIs that let users:
 - Show most important metrics prominently
 - Use `st.cache_data` for expensive data loading
 - Handle empty selection gracefully
+
+## New Features Workflow
+
+When new functions or features are added to the project, **always** follow this process:
+
+### 1. Research visualization
+
+- **Work with the research agent** to find the best way to visualize the new features in the UI
+- Search for: "how to visualize [feature type] in Streamlit/dashboard", "best practices for [data type] visualization"
+- Consider: tables vs charts, color coding, drill-down vs summary, placement (sidebar vs main)
+
+### 2. Review and modify UI
+
+- **Review the existing UI** (`app.py`) and identify where the new features fit
+- Modify the UI to integrate the new features:
+  - Add new sections, expanders, or tabs as needed
+  - Follow existing patterns (e.g., `st.dataframe` for tables, `st.caption` for descriptions)
+  - Ensure layout remains clear and consistent
+
+### 3. Execute and verify
+
+- **Run the app**: `OMP_NUM_THREADS=1 streamlit run app.py`
+- Verify the new features render correctly
+- Check for errors, empty states, and edge cases
+
+### 4. Checklist for future features
+
+- [ ] Consult research agent for visualization approach
+- [ ] Review existing UI structure
+- [ ] Add/modify UI components for new features
+- [ ] Run app and verify
+- [ ] Update this workflow if the process changes
