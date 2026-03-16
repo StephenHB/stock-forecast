@@ -24,6 +24,9 @@ class SimulationResult:
     trades: List[Dict[str, Any]]
     n_buys: int
     n_sells: int
+    start_price: float
+    end_price: float
+    buy_hold_return_pct: float
 
 
 def _get_prior_closes(
@@ -127,6 +130,13 @@ def run_simulation(
     final_value = cash + shares * final_actual
     total_return_pct = (final_value - initial_cash) / initial_cash * 100
 
+    # Buy-and-hold: invest at start, hold to end
+    start_price = prior_closes[0] if prior_closes else final_actual
+    end_price = final_actual
+    buy_hold_return_pct = (
+        (end_price / start_price - 1) * 100 if start_price > 0 else 0.0
+    )
+
     equity_series = pd.Series(equity_curve, index=pd.DatetimeIndex(dates))
     n_buys = sum(1 for t in trades if t["action"] == "BUY")
     n_sells = sum(1 for t in trades if t["action"] == "SELL")
@@ -140,6 +150,9 @@ def run_simulation(
         trades=trades,
         n_buys=n_buys,
         n_sells=n_sells,
+        start_price=start_price,
+        end_price=end_price,
+        buy_hold_return_pct=buy_hold_return_pct,
     )
 
 
