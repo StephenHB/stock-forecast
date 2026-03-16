@@ -19,7 +19,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.data_preprocess.stock_data_loader import StockDataLoader
-from src.forecasting import WeeklyAggregator, StandaloneBacktester, ForecastingPipeline
+from src.forecasting import WeeklyAggregator, StandaloneBacktester
 
 # Page config
 st.set_page_config(page_title="Stock Forecast", page_icon="📈", layout="wide")
@@ -50,8 +50,17 @@ def download_stock_data(symbols: tuple, start_date: str, end_date: str):
     )
 
 
-def run_backtest(stock_data: dict, forecast_horizon: int = 4) -> dict:
-    """Run backtesting for each stock."""
+def _days_to_weeks(forecast_days: int) -> int:
+    """Convert forecast days to weeks (business days: ~5 per week)."""
+    return max(1, (forecast_days + 4) // 5)
+
+
+def run_backtest(
+    stock_data: dict,
+    forecast_horizon_weeks: int,
+    forecast_days: int,
+) -> dict:
+    """Run backtesting for each stock. Target variable matches horizon (N days ahead)."""
     weekly_aggregator = WeeklyAggregator(
         price_columns=["Open", "High", "Low", "Close"],
         volume_columns=["Volume"],
@@ -73,8 +82,10 @@ def run_backtest(stock_data: dict, forecast_horizon: int = 4) -> dict:
         f["quarter"] = f.index.quarter
         return f
 
-    def create_targets(data, h=4):
+    def create_targets(data, h: int):
+        """Create target = Close price h weeks ahead (matches forecast horizon)."""
         t = data.copy()
+        t[f"target_{h}w"] = t["Close"].shift(-h)
         t[f"target_{h}w_pct"] = (t["Close"].shift(-h) - t["Close"]) / t["Close"] * 100
         return t
 
@@ -87,20 +98,34 @@ def run_backtest(stock_data: dict, forecast_horizon: int = 4) -> dict:
                 daily.set_index("Date", inplace=True)
             weekly = weekly_aggregator.aggregate(daily)
             features = create_features(weekly)
-            targets = create_targets(features, forecast_horizon)
+            targets = create_targets(features, forecast_horizon_weeks)
             data = targets.dropna()
             if len(data) < 20:
                 continue
+
+            target_col = f"target_{forecast_horizon_weeks}w"
+            feature_columns = [
+                c for c in data.columns
+                if c != target_col
+                and not c.startswith("target_")
+                and pd.api.types.is_numeric_dtype(data[c])
+            ]
+
             backtester = StandaloneBacktester(
                 initial_train_size=13,
                 test_size=1,
                 step_size=1,
                 min_train_size=6,
-                target_column="Close",
-                forecast_horizon=forecast_horizon,
+                target_column=target_col,
+                forecast_horizon=forecast_horizon_weeks,
             )
-            bt_results = backtester.backtest(data)
+            bt_results = backtester.backtest(data, feature_columns=feature_columns)
             metrics = bt_results["overall_metrics"]
+
+            # Compute volatility (annualized std of weekly returns)
+            weekly_returns = weekly["Close"].pct_change().dropna()
+            volatility_annual = weekly_returns.std() * np.sqrt(52) * 100 if len(weekly_returns) > 1 else 0.0
+
             results[symbol] = {
                 "mape": metrics["mape"] * 100,
                 "rmse": metrics["rmse"],
@@ -109,36 +134,123 @@ def run_backtest(stock_data: dict, forecast_horizon: int = 4) -> dict:
                 "predictions": bt_results["predictions"],
                 "actuals": bt_results["actuals"],
                 "dates": bt_results["dates"],
+                "volatility_pct": volatility_annual,
+                "forecast_days": forecast_days,
             }
         except Exception as e:
             results[symbol] = {"error": str(e)}
     return results
 
 
-def run_forecast(stock_data: dict, forecast_horizon_weeks: int) -> dict:
-    """Run forecasting pipeline for each stock."""
+def run_forecast(
+    stock_data: dict,
+    forecast_horizon_weeks: int,
+    forecast_days: int,
+    backtest_results: dict,
+) -> dict:
+    """Run forecast using same model logic as backtest (train on full data, predict next period)."""
+    import lightgbm as lgb
+    from sklearn.preprocessing import StandardScaler
+
+    weekly_aggregator = WeeklyAggregator(
+        price_columns=["Open", "High", "Low", "Close"],
+        volume_columns=["Volume"],
+    )
+
+    def create_features(data):
+        f = data.copy()
+        for lag in [1, 2, 4]:
+            f[f"close_lag_{lag}"] = f["Close"].shift(lag)
+        for w in [4, 8]:
+            f[f"close_ma_{w}"] = f["Close"].rolling(window=w).mean()
+            f[f"close_std_{w}"] = f["Close"].rolling(window=w).std()
+        f["price_change_1w"] = f["Close"].pct_change(1)
+        f["price_change_4w"] = f["Close"].pct_change(4)
+        f["volume_ma_4"] = f["Volume"].rolling(window=4).mean()
+        f["volume_ratio"] = f["Volume"] / f["volume_ma_4"]
+        f["week_of_year"] = f.index.isocalendar().week
+        f["month"] = f.index.month
+        f["quarter"] = f.index.quarter
+        return f
+
+    def create_targets(data, h: int):
+        t = data.copy()
+        t[f"target_{h}w"] = t["Close"].shift(-h)
+        return t
+
+    best_params = {
+        "n_estimators": 200,
+        "max_depth": 5,
+        "learning_rate": 0.1,
+        "num_leaves": 31,
+        "subsample": 0.9,
+        "colsample_bytree": 0.9,
+        "reg_alpha": 0.1,
+        "reg_lambda": 0.1,
+        "random_state": 42,
+        "verbose": -1,
+    }
+    scaler = StandardScaler()
+
     results = {}
     for symbol, daily_df in stock_data.items():
         try:
             daily = daily_df.copy()
             if "Date" in daily.columns:
                 daily["Date"] = pd.to_datetime(daily["Date"], utc=True).dt.tz_localize(None)
-            # Ensure OHLCV columns exist (yfinance may use different names)
+                daily.set_index("Date", inplace=True)
             cols = {c: c.replace(" ", "_") for c in daily.columns if " " in c}
             daily = daily.rename(columns=cols)
-            pipeline = ForecastingPipeline(
-                forecast_horizon=forecast_horizon_weeks,
-                backtest_windows=6,
-                hyperparameter_tuning=False,
-            )
-            out = pipeline.fit_predict(daily, run_backtesting=False)
+            weekly = weekly_aggregator.aggregate(daily)
+            features = create_features(weekly)
+            targets = create_targets(features, forecast_horizon_weeks)
+            data = targets.dropna()
+            if len(data) < 20:
+                results[symbol] = {"error": "Insufficient data"}
+                continue
+
+            target_col = f"target_{forecast_horizon_weeks}w"
+            feature_columns = [
+                c for c in data.columns
+                if c != target_col
+                and not c.startswith("target_")
+                and pd.api.types.is_numeric_dtype(data[c])
+            ]
+
+            X = data[feature_columns]
+            y = data[target_col]
+            X_scaled = scaler.fit_transform(X)
+            model = lgb.LGBMRegressor(**best_params)
+            model.fit(X_scaled, y)
+
+            last_row = data.iloc[-1:][feature_columns]
+            X_pred = scaler.transform(last_row)
+            pred_price = float(model.predict(X_pred)[0])
+            last_price = float(daily["Close"].iloc[-1])
+
+            mape = backtest_results.get(symbol, {}).get("mape", 10.0)
+            volatility = backtest_results.get(symbol, {}).get("volatility_pct", 20.0)
+
             results[symbol] = {
-                "predictions": out.get("predictions", {}),
-                "last_price": daily["Close"].iloc[-1] if "Close" in daily.columns else None,
+                "predictions": {1: pred_price},
+                "last_price": last_price,
+                "risk_rating": _mape_to_risk_rating(mape),
+                "volatility_pct": volatility,
             }
         except Exception as e:
             results[symbol] = {"error": str(e)}
     return results
+
+
+def _mape_to_risk_rating(mape: float) -> str:
+    """Convert MAPE to risk/confidence rating."""
+    if mape < 3:
+        return "Low"
+    if mape < 7:
+        return "Medium"
+    if mape < 12:
+        return "Moderate-High"
+    return "High"
 
 
 def main():
@@ -175,7 +287,7 @@ def main():
         )
         run_btn = st.button("🚀 Run Forecast & Backtest", type="primary")
 
-    forecast_weeks = max(1, (forecast_days + 6) // 7)
+    forecast_weeks = _days_to_weeks(forecast_days)
     end_date = datetime.now()
     start_date = end_date - timedelta(days=365 * backtest_years)
 
@@ -194,9 +306,12 @@ def main():
                 st.error("Failed to download data. Check your connection.")
                 return
 
-            # Run backtest and forecast
-            backtest_results = run_backtest(stock_data, forecast_weeks)
-            forecast_results = run_forecast(stock_data, forecast_weeks)
+            backtest_results = run_backtest(
+                stock_data, forecast_weeks, forecast_days
+            )
+            forecast_results = run_forecast(
+                stock_data, forecast_weeks, forecast_days, backtest_results
+            )
 
         # Main content
         st.success(f"✅ Processed {len(stock_data)} stocks")
@@ -219,18 +334,22 @@ def main():
                 st.sidebar.error(f"{sym}: {backtest_results[sym]['error']}")
 
         # ═══════════════════════════════════════════════════════════════
-        # 1. TOP: Predicted prices (most prominent)
+        # 1. TOP: Predicted prices with risk rating and volatility
         # ═══════════════════════════════════════════════════════════════
         st.subheader("🔮 Predicted Prices")
-        st.caption(f"Forecast for next {forecast_days} day(s) ahead")
+        st.caption(
+            f"Forecast for next {forecast_days} day(s) ahead "
+            f"(~{forecast_weeks} week(s), business days)"
+        )
         pred_cols = st.columns(min(len(selected_stocks), 4))
         for i, sym in enumerate(selected_stocks):
             if sym in forecast_results and "error" not in forecast_results[sym]:
                 r = forecast_results[sym]
                 preds = r.get("predictions", {})
                 last = r.get("last_price")
+                risk = r.get("risk_rating", "—")
+                vol = r.get("volatility_pct")
                 with pred_cols[i % len(pred_cols)]:
-                    # Use first horizon prediction for "N days ahead" (model is weekly)
                     pred_price = list(preds.values())[0] if preds else None
                     if pred_price is not None:
                         st.metric(
@@ -238,22 +357,29 @@ def main():
                             f"${pred_price:,.2f}",
                             f"In {forecast_days} days (last: ${last:,.2f})" if last else f"In {forecast_days} days",
                         )
+                        st.caption(f"**Risk:** {risk}")
+                        if vol is not None:
+                            st.caption(f"**Volatility:** {vol:.1f}% ann.")
                     else:
                         st.metric(sym, "N/A", f"Last: ${last:,.2f}" if last else "N/A")
-        # Forecast horizon chart (all horizons)
+            elif sym in forecast_results:
+                with pred_cols[i % len(pred_cols)]:
+                    st.error(f"{sym}: {forecast_results[sym].get('error', 'Failed')}")
+        # Single-horizon chart (predicted vs last price)
         horizon_data = {}
         for sym in selected_stocks:
             if sym in forecast_results and "error" not in forecast_results[sym]:
                 preds = forecast_results[sym].get("predictions", {})
-                if preds:
-                    horizon_data[sym] = {f"Day {k*7}": v for k, v in preds.items()}
+                last = forecast_results[sym].get("last_price")
+                if preds and last is not None:
+                    horizon_data[sym] = {"Last": last, "Predicted": list(preds.values())[0]}
         if horizon_data:
             horizon_df = pd.DataFrame(horizon_data)
             st.bar_chart(horizon_df, use_container_width=True)
-            st.caption("Predicted close price by horizon (days ahead)")
+            st.caption("Predicted vs last close price")
 
         # ═══════════════════════════════════════════════════════════════
-        # 2. MIDDLE: Statistical metrics
+        # 2. MIDDLE: Statistical metrics with risk and volatility
         # ═══════════════════════════════════════════════════════════════
         st.subheader("📊 Statistical Metrics")
         bt_rows = []
@@ -261,18 +387,39 @@ def main():
             if sym in backtest_results and "error" not in backtest_results[sym]:
                 r = backtest_results[sym]
                 pred_price = None
+                risk = "—"
+                vol = None
                 if sym in forecast_results and "error" not in forecast_results[sym]:
-                    preds = forecast_results[sym].get("predictions", {})
+                    fr = forecast_results[sym]
+                    preds = fr.get("predictions", {})
                     pred_price = list(preds.values())[0] if preds else None
+                    risk = fr.get("risk_rating", "—")
+                    vol = fr.get("volatility_pct")
                 bt_rows.append({
                     "Stock": sym,
                     "MAPE (%)": f"{r['mape']:.2f}",
                     "RMSE": f"{r['rmse']:.2f}",
                     "Predicted Price": f"${pred_price:,.2f}" if pred_price is not None else "N/A",
+                    "Risk Rating": risk,
+                    "Volatility (ann. %)": f"{vol:.1f}" if vol is not None else "—",
                     "Windows": r["windows"],
                 })
         if bt_rows:
             st.dataframe(pd.DataFrame(bt_rows), use_container_width=True, hide_index=True)
+
+        # ═══════════════════════════════════════════════════════════════
+        # 2b. Volatility analysis
+        # ═══════════════════════════════════════════════════════════════
+        st.subheader("📈 Volatility Analysis")
+        vol_data = []
+        for sym in selected_stocks:
+            if sym in backtest_results and "error" not in backtest_results[sym]:
+                vol = backtest_results[sym].get("volatility_pct")
+                if vol is not None:
+                    vol_data.append({"Stock": sym, "Annualized Volatility (%)": f"{vol:.2f}"})
+        if vol_data:
+            st.caption("Historical volatility (annualized std of weekly returns)")
+            st.dataframe(pd.DataFrame(vol_data), use_container_width=True, hide_index=True)
 
         # ═══════════════════════════════════════════════════════════════
         # 3. BOTTOM: Backtesting plots (forecast vs true price)
