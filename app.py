@@ -19,7 +19,11 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.data_preprocess.stock_data_loader import StockDataLoader
-from src.forecasting import WeeklyAggregator, StandaloneBacktester
+from src.forecasting import (
+    WeeklyAggregator,
+    StandaloneBacktester,
+    run_multi_stock_simulation,
+)
 from src.research import CapitalMarketResearcher
 from src.forecasting.feature_factory import (
     create_daily_features,
@@ -63,6 +67,55 @@ def _days_to_weeks(forecast_days: int) -> int:
     return max(1, (forecast_days + 4) // 5)
 
 
+def _get_daily_close_series(daily_df: pd.DataFrame) -> pd.Series:
+    """
+    Extract daily Close series using the SAME logic as the Historical Price chart.
+    Single source of truth for chart and simulation table.
+    """
+    df = daily_df.copy()
+    date_col = "Date" if "Date" in df.columns else ("Datetime" if "Datetime" in df.columns else None)
+    close_col = "Close" if "Close" in df.columns else next(
+        (c for c in df.columns if "close" in str(c).lower()), df.columns[0]
+    )
+    if date_col:
+        df[date_col] = pd.to_datetime(df[date_col])
+        df = df.set_index(date_col)
+    closes = df[close_col].dropna()
+    # Normalize to timezone-naive for consistent comparison
+    if getattr(closes.index, "tz", None) is not None:
+        closes = closes.copy()
+        closes.index = pd.DatetimeIndex(
+            [x.replace(tzinfo=None) if hasattr(x, "tzinfo") and x.tzinfo else x for x in closes.index]
+        )
+    return closes
+
+
+def _get_start_end_prices_from_daily(
+    daily_df: pd.DataFrame,
+    first_test_date: pd.Timestamp,
+    last_test_date: pd.Timestamp,
+) -> tuple[float, float]:
+    """
+    Get start and end Close prices from raw daily data to match Historical chart.
+    Uses _get_daily_close_series for consistency.
+    Start = prior close before first test date; End = close on last test date.
+    """
+    closes = _get_daily_close_series(daily_df)
+    if closes.empty:
+        return 0.0, 0.0
+    first_ts = pd.Timestamp(first_test_date)
+    last_ts = pd.Timestamp(last_test_date)
+    if first_ts.tz is not None:
+        first_ts = first_ts.replace(tzinfo=None)
+    if last_ts.tz is not None:
+        last_ts = last_ts.replace(tzinfo=None)
+    before_first = closes[closes.index < first_ts]
+    start_price = float(before_first.iloc[-1]) if len(before_first) > 0 else float(closes.iloc[0])
+    on_or_before_last = closes[closes.index <= last_ts]
+    end_price = float(on_or_before_last.iloc[-1]) if len(on_or_before_last) > 0 else float(closes.iloc[-1])
+    return start_price, end_price
+
+
 def run_backtest(
     stock_data: dict,
     forecast_horizon_weeks: int,
@@ -93,8 +146,6 @@ def run_backtest(
                 features = create_daily_features(daily)
                 data = create_daily_targets(features, forecast_days)
                 target_col = f"target_{forecast_days}d"
-                initial_train = 260
-                min_train = 60
                 returns = daily["Close"].pct_change().dropna()
                 periods = 252
             else:
@@ -108,9 +159,15 @@ def run_backtest(
                 periods = 52
 
             data = data.dropna()
+            n_rows = len(data)
             min_rows = 60 if use_daily else 20
-            if len(data) < min_rows:
+            if n_rows < min_rows:
                 continue
+
+            # Scale daily training size for short backtests (1yr ~252 days)
+            if use_daily:
+                initial_train = min(260, max(60, n_rows - 30))
+                min_train = min(60, max(20, n_rows // 4))
 
             feature_columns = get_feature_columns(data, target_col)
 
@@ -128,6 +185,9 @@ def run_backtest(
                 returns.std() * np.sqrt(periods) * 100 if len(returns) > 1 else 0.0
             )
 
+            # Price series for trading simulation (same frequency as backtest)
+            price_series = data["Close"] if "Close" in data.columns else data.iloc[:, 0]
+
             results[symbol] = {
                 "mape": metrics["mape"] * 100,
                 "rmse": metrics["rmse"],
@@ -138,6 +198,7 @@ def run_backtest(
                 "dates": bt_results["dates"],
                 "volatility_pct": volatility_annual,
                 "forecast_days": forecast_days,
+                "price_series": price_series,
             }
         except Exception as e:
             results[symbol] = {"error": str(e)}
@@ -300,6 +361,26 @@ def main():
             )
             forecast_results = run_forecast(
                 stock_data, forecast_weeks, forecast_days, backtest_results
+            )
+
+        # Trading simulation: 100k total, split equally across stocks
+        initial_cash_total = 100_000.0
+        n_stocks = len([s for s in selected_stocks if s in backtest_results and "error" not in backtest_results.get(s, {})])
+        cash_per_stock = initial_cash_total / n_stocks if n_stocks > 0 else 0.0
+
+        price_series_by_symbol = {}
+        for sym in selected_stocks:
+            if sym in backtest_results and "error" not in backtest_results[sym]:
+                ps = backtest_results[sym].get("price_series")
+                if ps is not None:
+                    price_series_by_symbol[sym] = ps
+
+        sim_results = {}
+        if price_series_by_symbol:
+            sim_results = run_multi_stock_simulation(
+                backtest_results,
+                price_series_by_symbol,
+                initial_cash_per_stock=cash_per_stock,
             )
 
         # Main content
@@ -504,15 +585,102 @@ def main():
                     st.line_chart(bt_df, use_container_width=True)
                     st.caption("Backtest predictions vs actual close price (weekly)")
 
-        # Historical price chart (optional, at very bottom)
+        # ═══════════════════════════════════════════════════════════
+        # 4. Trading Simulation (100k, buy on up forecast, sell on down)
+        # ═══════════════════════════════════════════════════════════
+        st.subheader("💰 Trading Simulation")
+        st.caption(
+            f"Assume ${initial_cash_total:,.0f} total cash, split equally across stocks. "
+            "Buy when forecast says price will go up, sell when forecast says down. "
+            "Each period: either sell all shares or buy with all available cash."
+        )
+        valid_sim_stocks = [
+            s for s in selected_stocks
+            if s in sim_results and sim_results[s] is not None
+        ]
+        if valid_sim_stocks:
+            # Summary table with start/end price and buy-and-hold comparison
+            # Use raw daily stock_data for start/end prices to match Historical chart
+            sim_rows = []
+            total_final = 0.0
+            total_buy_hold = 0.0
+            for sym in valid_sim_stocks:
+                res = sim_results[sym]
+                bt = backtest_results.get(sym, {})
+                dates = bt.get("dates", [])
+                start_price_display = res.start_price
+                end_price_display = res.end_price
+                buy_hold_pct = res.buy_hold_return_pct
+                if sym in stock_data:
+                    # Use full backtest data period (e.g. 2 years), not test window
+                    closes = _get_daily_close_series(stock_data[sym])
+                    if not closes.empty:
+                        start_price_display = float(closes.iloc[0])
+                        end_price_display = float(closes.iloc[-1])
+                        buy_hold_pct = (
+                            (end_price_display / start_price_display - 1) * 100
+                            if start_price_display > 0
+                            else 0.0
+                        )
+                total_final += res.final_value
+                total_buy_hold += res.initial_cash * (1 + buy_hold_pct / 100)
+                sim_rows.append({
+                    "Stock": sym,
+                    "Start Price": f"${start_price_display:,.2f}",
+                    "End Price": f"${end_price_display:,.2f}",
+                    "Initial ($)": f"${res.initial_cash:,.0f}",
+                    "Final Value ($)": f"${res.final_value:,.0f}",
+                    "Forecast Trade (%)": f"{res.total_return_pct:+.1f}%",
+                    "Buy & Hold (%)": f"{buy_hold_pct:+.1f}%",
+                    "Buys": res.n_buys,
+                    "Sells": res.n_sells,
+                })
+            sim_rows.append({
+                "Stock": "**Total**",
+                "Start Price": "—",
+                "End Price": "—",
+                "Initial ($)": f"${initial_cash_total:,.0f}",
+                "Final Value ($)": f"${total_final:,.0f}",
+                "Forecast Trade (%)": f"{(total_final - initial_cash_total) / initial_cash_total * 100:+.1f}%",
+                "Buy & Hold (%)": f"{(total_buy_hold - initial_cash_total) / initial_cash_total * 100:+.1f}%",
+                "Buys": "—",
+                "Sells": "—",
+            })
+            st.dataframe(
+                pd.DataFrame(sim_rows),
+                use_container_width=True,
+                hide_index=True,
+            )
+            date_range = ""
+            if valid_sim_stocks and valid_sim_stocks[0] in stock_data:
+                closes = _get_daily_close_series(stock_data[valid_sim_stocks[0]])
+                if not closes.empty:
+                    date_range = f" Full backtest period: {closes.index[0].strftime('%Y-%m-%d')} to {closes.index[-1].strftime('%Y-%m-%d')}."
+            st.caption(
+                f"**Start/End Price:** Daily close at beginning and end of full backtest period (matches Historical chart).{date_range} "
+                "**Buy & Hold:** Gain/loss if you invested at the start and held until the end."
+            )
+            # Equity curves
+            st.markdown("**Portfolio value over test period**")
+            sim_tabs = st.tabs(valid_sim_stocks)
+            for tab, sym in zip(sim_tabs, valid_sim_stocks):
+                res = sim_results[sym]
+                with tab:
+                    eq_df = res.equity_curve.to_frame(name="Portfolio Value ($)")
+                    eq_df.index.name = "Date"
+                    st.line_chart(eq_df, use_container_width=True)
+        else:
+            st.info("No simulation results available.")
+
+        # Historical price chart: full backtest data period (matches start/end price)
         st.subheader("📈 Historical Prices")
+        st.caption("Daily close prices (full backtest period)")
         chart_dfs = []
         for sym in selected_stocks:
             if sym in stock_data:
-                df = stock_data[sym].copy()
-                df["Date"] = pd.to_datetime(df["Date"])
-                df = df.set_index("Date")[["Close"]].rename(columns={"Close": sym})
-                chart_dfs.append(df)
+                close_series = _get_daily_close_series(stock_data[sym])
+                if not close_series.empty:
+                    chart_dfs.append(close_series.to_frame(name=sym))
         if chart_dfs:
             chart_data = pd.concat(chart_dfs, axis=1).dropna(how="all")
             if not chart_data.empty:

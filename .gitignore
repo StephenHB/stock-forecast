@@ -354,6 +354,7 @@ results_*.json
 # Example and test files
 example_*.py
 test_*.py
+!tests/test_*.py
 *_example.py
 *_test.py
 
