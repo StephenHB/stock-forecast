@@ -199,9 +199,18 @@ Key dependencies include:
 - `matplotlib` & `seaborn`: Data visualization
 - `pyyaml`: Configuration file handling
 
+## AI Agent Setup
+
+This project uses Cursor agent skills and rules for consistent AI assistance:
+
+- **`.cursor/rules/`** — Core project standards (always applied)
+- **`.cursor/skills/stock-forecast-analysis/`** — Data analysis, ML, and visualization guidance (applied when working with notebooks, pandas, scikit-learn, etc.)
+- **`.cursor/skills/testing-agent/`** — Testing guidance: verify new features work as designed and integrate with existing workflows
+- **`.cursor/skills/git-agent/`** — Git commit, push, and pull request assistance when there are significant changes
+
 ## Contributing
 
-1. Follow the coding standards outlined in `AI_README.md`
+1. Follow the coding standards in `.cursor/rules/` and `.cursor/skills/stock-forecast-analysis/`
 2. Use functional programming where appropriate
 3. Implement rigorous statistical validation
 4. Add unit tests for new functionality

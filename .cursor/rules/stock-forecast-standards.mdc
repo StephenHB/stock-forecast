@@ -1,0 +1,37 @@
+---
+description: Core coding standards and project conventions for stock-forecast
+alwaysApply: true
+---
+
+# Stock Forecast Standards
+
+## Environment
+
+- Activate virtual environment per README.md (e.g., `uv run` or `source .venv/bin/activate`)
+- Use dependencies from `pyproject.toml`
+
+## Code Style
+
+- Follow PEP 8
+- Use descriptive variable names reflecting the data
+- Prefer functional programming; avoid unnecessary classes
+- **Enhance in place**: When improving a method, update the existing name—don't create new ones
+
+## Project Layout
+
+```
+src/data_preprocess/   → data loading, cleaning, feature engineering
+src/forecasting/       → pipeline, models, backtesting
+src/feature_engineering/ → feature utilities
+notebooks/             → development and testing
+data/                  → CSV/parquet storage
+config/                → YAML config
+test/                  → unit tests
+```
+
+## Key Conventions
+
+1. Define reusable code in `src/`; import into notebooks
+2. Begin analysis with data exploration and summary statistics
+3. Document data sources, assumptions, and methodologies
+4. Add unit tests for new functionality
