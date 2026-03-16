@@ -106,6 +106,9 @@ def run_backtest(stock_data: dict, forecast_horizon: int = 4) -> dict:
                 "rmse": metrics["rmse"],
                 "r2": metrics["r2"],
                 "windows": bt_results["total_windows"],
+                "predictions": bt_results["predictions"],
+                "actuals": bt_results["actuals"],
+                "dates": bt_results["dates"],
             }
         except Exception as e:
             results[symbol] = {"error": str(e)}
@@ -157,11 +160,11 @@ def main():
         )
         forecast_days = st.slider(
             "Forecast horizon (days)",
-            min_value=7,
-            max_value=90,
-            value=28,
-            step=7,
-            help="Number of days ahead to predict",
+            min_value=1,
+            max_value=30,
+            value=5,
+            step=1,
+            help="Number of days ahead to predict (model uses weekly data; 5 days ≈ 1 week)",
         )
         backtest_years = st.slider(
             "Backtest data (years)",
@@ -203,32 +206,23 @@ def main():
         for sym in selected_stocks:
             if sym in backtest_results and "error" not in backtest_results[sym]:
                 r = backtest_results[sym]
+                pred_price = None
+                if sym in forecast_results and "error" not in forecast_results[sym]:
+                    preds = forecast_results[sym].get("predictions", {})
+                    pred_price = list(preds.values())[0] if preds else None
                 st.sidebar.metric(
                     f"{sym} MAPE",
                     f"{r['mape']:.1f}%",
-                    f"R²={r['r2']:.2f}",
+                    f"Pred: ${pred_price:,.2f}" if pred_price is not None else "—",
                 )
             elif sym in backtest_results:
                 st.sidebar.error(f"{sym}: {backtest_results[sym]['error']}")
 
-        # Backtest metrics table
-        st.subheader("📊 Backtesting Results")
-        bt_rows = []
-        for sym in selected_stocks:
-            if sym in backtest_results and "error" not in backtest_results[sym]:
-                r = backtest_results[sym]
-                bt_rows.append({
-                    "Stock": sym,
-                    "MAPE (%)": f"{r['mape']:.2f}",
-                    "RMSE": f"{r['rmse']:.2f}",
-                    "R²": f"{r['r2']:.3f}",
-                    "Windows": r["windows"],
-                })
-        if bt_rows:
-            st.dataframe(pd.DataFrame(bt_rows), use_container_width=True, hide_index=True)
-
-        # Predictions
-        st.subheader("🔮 Predictions")
+        # ═══════════════════════════════════════════════════════════════
+        # 1. TOP: Predicted prices (most prominent)
+        # ═══════════════════════════════════════════════════════════════
+        st.subheader("🔮 Predicted Prices")
+        st.caption(f"Forecast for next {forecast_days} day(s) ahead")
         pred_cols = st.columns(min(len(selected_stocks), 4))
         for i, sym in enumerate(selected_stocks):
             if sym in forecast_results and "error" not in forecast_results[sym]:
@@ -236,16 +230,74 @@ def main():
                 preds = r.get("predictions", {})
                 last = r.get("last_price")
                 with pred_cols[i % len(pred_cols)]:
-                    st.metric(sym, f"${last:.2f}" if last else "N/A", "Last close")
-                    if preds:
-                        # Show week-ahead predictions
-                        pred_df = pd.DataFrame([
-                            {"Week": k, "Predicted": f"${v:.2f}"}
-                            for k, v in preds.items()
-                        ])
-                        st.dataframe(pred_df, use_container_width=True, hide_index=True)
+                    # Use first horizon prediction for "N days ahead" (model is weekly)
+                    pred_price = list(preds.values())[0] if preds else None
+                    if pred_price is not None:
+                        st.metric(
+                            sym,
+                            f"${pred_price:,.2f}",
+                            f"In {forecast_days} days (last: ${last:,.2f})" if last else f"In {forecast_days} days",
+                        )
+                    else:
+                        st.metric(sym, "N/A", f"Last: ${last:,.2f}" if last else "N/A")
+        # Forecast horizon chart (all horizons)
+        horizon_data = {}
+        for sym in selected_stocks:
+            if sym in forecast_results and "error" not in forecast_results[sym]:
+                preds = forecast_results[sym].get("predictions", {})
+                if preds:
+                    horizon_data[sym] = {f"Day {k*7}": v for k, v in preds.items()}
+        if horizon_data:
+            horizon_df = pd.DataFrame(horizon_data)
+            st.bar_chart(horizon_df, use_container_width=True)
+            st.caption("Predicted close price by horizon (days ahead)")
 
-        # Historical price chart
+        # ═══════════════════════════════════════════════════════════════
+        # 2. MIDDLE: Statistical metrics
+        # ═══════════════════════════════════════════════════════════════
+        st.subheader("📊 Statistical Metrics")
+        bt_rows = []
+        for sym in selected_stocks:
+            if sym in backtest_results and "error" not in backtest_results[sym]:
+                r = backtest_results[sym]
+                pred_price = None
+                if sym in forecast_results and "error" not in forecast_results[sym]:
+                    preds = forecast_results[sym].get("predictions", {})
+                    pred_price = list(preds.values())[0] if preds else None
+                bt_rows.append({
+                    "Stock": sym,
+                    "MAPE (%)": f"{r['mape']:.2f}",
+                    "RMSE": f"{r['rmse']:.2f}",
+                    "Predicted Price": f"${pred_price:,.2f}" if pred_price is not None else "N/A",
+                    "Windows": r["windows"],
+                })
+        if bt_rows:
+            st.dataframe(pd.DataFrame(bt_rows), use_container_width=True, hide_index=True)
+
+        # ═══════════════════════════════════════════════════════════════
+        # 3. BOTTOM: Backtesting plots (forecast vs true price)
+        # ═══════════════════════════════════════════════════════════════
+        st.subheader("📉 Backtesting: Forecast vs True Price")
+        valid_backtest_stocks = [
+            s for s in selected_stocks
+            if s in backtest_results
+            and "error" not in backtest_results[s]
+            and "dates" in backtest_results[s]
+        ]
+        if valid_backtest_stocks:
+            tabs = st.tabs(valid_backtest_stocks)
+            for tab, sym in zip(tabs, valid_backtest_stocks):
+                r = backtest_results[sym]
+                with tab:
+                    bt_df = pd.DataFrame({
+                        "Actual": r["actuals"],
+                        "Forecast": r["predictions"],
+                    }, index=pd.DatetimeIndex(r["dates"]))
+                    bt_df.index.name = "Date"
+                    st.line_chart(bt_df, use_container_width=True)
+                    st.caption("Backtest predictions vs actual close price (weekly)")
+
+        # Historical price chart (optional, at very bottom)
         st.subheader("📈 Historical Prices")
         chart_dfs = []
         for sym in selected_stocks:
@@ -264,7 +316,7 @@ def main():
         st.markdown("""
         **Default settings:**
         - Backtest: Last 2 years of daily data
-        - Forecast: 4 weeks ahead
+        - Forecast: 5 days ahead (1–30 days)
         """)
 
 
