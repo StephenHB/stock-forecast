@@ -310,6 +310,7 @@ config/local_config.yaml
 
 # Cache directories
 .cache/
+src/research/cache/
 __pycache__/
 *.pyc
 *.pyo
