@@ -20,12 +20,12 @@ description: >-
 When new features or functions are added:
 
 1. **Identify the contract**: What inputs, outputs, and behavior are expected?
-2. **Write unit tests** in `test/` mirroring `src/` structure (e.g., `test/forecasting/test_lgbm_forecaster.py`)
+2. **Write unit tests** in `tests/` mirroring `src/` structure (e.g., `tests/forecasting/test_lgbm_forecaster.py`)
 3. **Cover**:
    - Happy path (typical inputs)
    - Edge cases (empty data, boundary values, missing inputs)
    - Error handling (invalid inputs, exceptions)
-4. **Run**: `uv run pytest test/ -v` (or `pytest test/ -v`)
+4. **Run**: `uv run pytest tests/ -v` (or `pytest tests/ -v`)
 
 ### Phase 2: Test Integration
 
@@ -44,7 +44,7 @@ When new code touches existing workflows:
 ## Test Structure
 
 ```
-test/
+tests/
 ├── data_preprocess/     # Tests for src/data_preprocess/
 ├── forecasting/        # Tests for src/forecasting/
 ├── conftest.py         # Shared fixtures (optional)

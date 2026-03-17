@@ -13,7 +13,7 @@
 
 ## Checklist
 
-- [ ] Tests pass (`pytest test/ -v`) or N/A for docs/config
+- [ ] Tests pass (`pytest tests/ -v`) or N/A for docs/config
 - [ ] Commit messages follow `type(scope): subject` format
 - [ ] Changes are self-contained and focused
 

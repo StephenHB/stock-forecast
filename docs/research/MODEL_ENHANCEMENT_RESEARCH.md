@@ -1,7 +1,7 @@
 # Model Enhancement Research
 
 **Branch:** `feat/model-enhancement-research`  
-**Date:** 2025-03  
+**Date:** 2026-03  
 **Purpose:** Research DL/ML models using news/financial reports for out-of-sample accuracy, and feature importance methods for price direction.
 
 ---
@@ -53,7 +53,8 @@
 - **Done:** News sentiment (keyword-based lexicon) → `news_sentiment_mean`, `news_positive_ratio`, etc.
 - **Done:** SEC filings from yfinance (10-K, 10-Q, 8-K) with links in UI.
 - **Done:** `research_features.py` for optional pipeline integration.
-- **Next:** Integrate `get_impact_features_dict()` into backtest (Phase 1).
+- **Done:** Feature importance (gain, SHAP, permutation) in `feature_importance.py`.
+- **Deferred:** Pipeline integration of `get_impact_features_dict()` — yfinance news/SEC can cause stability issues (exit 139) on some systems; research features remain UI-only.
 - **Future:** FinBERT or FinBERT-LSTM for richer sentiment (Phase 2–3).
 
 ---

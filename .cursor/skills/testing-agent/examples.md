@@ -3,7 +3,7 @@
 ## Unit Test Example
 
 ```python
-# test/forecasting/test_lgbm_forecaster.py
+# tests/forecasting/test_lgbm_forecaster.py
 import pytest
 import pandas as pd
 from src.forecasting.lgbm_forecaster import LGBMForecaster
@@ -29,7 +29,7 @@ def test_forecaster_handles_empty_input():
 ## Integration Test Example
 
 ```python
-# test/test_integration.py
+# tests/test_integration.py
 import pytest
 from src.data_preprocess import StockDataLoader
 from src.forecasting import ForecastingPipeline
@@ -52,7 +52,7 @@ def test_data_to_forecast_pipeline_integration(config_stocks, tmp_path):
 ## Fixture Example
 
 ```python
-# test/conftest.py
+# tests/conftest.py
 import pytest
 
 @pytest.fixture
