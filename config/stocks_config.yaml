@@ -1,114 +1,147 @@
 # Stock Configuration File
 # This file defines which stocks to download and analyze
 
-# Default configuration for top 100 S&P 500 stocks
+# S&P 100 constituents (as of 2025, includes recent additions)
+# Source: S&P Dow Jones Indices / Wikipedia
+sp100_stocks:
+  - AAPL   # Apple Inc.
+  - ABBV   # AbbVie
+  - ABT    # Abbott Laboratories
+  - ACN    # Accenture
+  - ADBE   # Adobe Inc.
+  - AIG    # American International Group
+  - AMD    # Advanced Micro Devices
+  - AMGN   # Amgen
+  - AMT    # American Tower
+  - AMZN   # Amazon
+  - AVGO   # Broadcom
+  - AXP    # American Express
+  - BA     # Boeing
+  - BAC    # Bank of America
+  - BK     # BNY Mellon
+  - BKNG   # Booking Holdings
+  - BLK    # BlackRock
+  - BMY    # Bristol Myers Squibb
+  - BRK.B  # Berkshire Hathaway (Class B)
+  - C      # Citigroup
+  - CAT    # Caterpillar Inc.
+  - CL     # Colgate-Palmolive
+  - CMCSA  # Comcast
+  - COF    # Capital One
+  - COP    # ConocoPhillips
+  - COST   # Costco
+  - CRM    # Salesforce
+  - CSCO   # Cisco
+  - CVS    # CVS Health
+  - CVX    # Chevron Corporation
+  - DE     # Deere & Company
+  - DHR    # Danaher Corporation
+  - DIS    # Walt Disney Company
+  - DUK    # Duke Energy
+  - EMR    # Emerson Electric
+  - FDX    # FedEx
+  - GD     # General Dynamics
+  - GE     # GE Aerospace
+  - GILD   # Gilead Sciences
+  - GM     # General Motors
+  - GOOG   # Alphabet Inc. (Class C)
+  - GOOGL  # Alphabet Inc. (Class A)
+  - GS     # Goldman Sachs
+  - HD     # Home Depot
+  - HON    # Honeywell
+  - IBM    # IBM
+  - INTC   # Intel
+  - INTU   # Intuit
+  - ISRG   # Intuitive Surgical
+  - JNJ    # Johnson & Johnson
+  - JPM    # JPMorgan Chase
+  - KO     # Coca-Cola Company
+  - LIN    # Linde plc
+  - LLY    # Eli Lilly and Company
+  - LMT    # Lockheed Martin
+  - LOW    # Lowe's
+  - MA     # Mastercard
+  - MCD    # McDonald's
+  - MDLZ   # Mondelēz International
+  - MDT    # Medtronic
+  - MET    # MetLife
+  - META   # Meta Platforms
+  - MMM    # 3M
+  - MO     # Altria
+  - MRK    # Merck & Co.
+  - MS     # Morgan Stanley
+  - MSFT   # Microsoft
+  - NEE    # NextEra Energy
+  - NFLX   # Netflix
+  - NKE    # Nike
+  - NOW    # ServiceNow
+  - NVDA   # NVIDIA
+  - ORCL   # Oracle Corporation
+  - PEP    # PepsiCo
+  - PFE    # Pfizer
+  - PG     # Procter & Gamble
+  - PLTR   # Palantir Technologies
+  - PM     # Philip Morris International
+  - PYPL   # PayPal
+  - QCOM   # Qualcomm
+  - RTX    # RTX Corporation
+  - SBUX   # Starbucks
+  - SCHW   # Charles Schwab
+  - SO     # Southern Company
+  - SPG    # Simon Property Group
+  - T      # AT&T
+  - TGT    # Target Corporation
+  - TMO    # Thermo Fisher Scientific
+  - TMUS   # T-Mobile US
+  - TSLA   # Tesla
+  - TXN    # Texas Instruments
+  - UBER   # Uber
+  - UNH    # UnitedHealth Group
+  - UNP    # Union Pacific
+  - UPS    # United Parcel Service
+  - USB    # U.S. Bancorp
+  - V      # Visa Inc.
+  - VZ     # Verizon
+  - WFC    # Wells Fargo
+  - WMT    # Walmart
+  - XOM    # ExxonMobil
+  # Recent additions (2026)
+  - MU     # Micron Technology
+  - LRCX   # Lam Research
+  - AMAT   # Applied Materials
+  - GEV    # GE Vernova
+
+# Market indices and ETFs (track broad market performance)
+market_indices:
+  - SPY    # SPDR S&P 500 ETF
+  - QQQ    # Invesco QQQ (Nasdaq 100)
+  - DIA    # SPDR Dow Jones Industrial Average
+  - IWM    # iShares Russell 2000
+  - VOO    # Vanguard S&P 500 ETF
+  - VTI    # Vanguard Total Stock Market
+  - OEF    # iShares S&P 100 ETF
+
+# Legacy: default_stocks for backward compatibility (subset of sp100)
 default_stocks:
-  # Technology sector
-  - AAPL  # Apple Inc.
-  - MSFT  # Microsoft Corporation
-  - GOOGL # Alphabet Inc. Class A
-  - GOOG  # Alphabet Inc. Class C
-  - AMZN  # Amazon.com Inc.
-  - NVDA  # NVIDIA Corporation
-  - META  # Meta Platforms Inc.
-  - TSLA  # Tesla Inc.
-  - NFLX  # Netflix Inc.
-  - ADBE  # Adobe Inc.
-  
-  # Financial sector
-  - JPM   # JPMorgan Chase & Co.
-  - BAC   # Bank of America Corporation
-  - WFC   # Wells Fargo & Company
-  - GS    # Goldman Sachs Group Inc.
-  - MS    # Morgan Stanley
-  - C     # Citigroup Inc.
-  - AXP   # American Express Company
-  - V     # Visa Inc.
-  - MA    # Mastercard Incorporated
-  - PYPL  # PayPal Holdings Inc.
-  
-  # Healthcare sector
-  - JNJ   # Johnson & Johnson
-  - PFE   # Pfizer Inc.
-  - UNH   # UnitedHealth Group Incorporated
-  - ABBV  # AbbVie Inc.
-  - MRK   # Merck & Co. Inc.
-  - TMO   # Thermo Fisher Scientific Inc.
-  - ABT   # Abbott Laboratories
-  - DHR   # Danaher Corporation
-  - BMY   # Bristol Myers Squibb Company
-  - AMGN  # Amgen Inc.
-  
-  # Consumer sector
-  - PG    # Procter & Gamble Company
-  - KO    # The Coca-Cola Company
-  - PEP   # PepsiCo Inc.
-  - WMT   # Walmart Inc.
-  - HD    # The Home Depot Inc.
-  - MCD   # McDonald's Corporation
-  - SBUX  # Starbucks Corporation
-  - NKE   # Nike Inc.
-  - TGT   # Target Corporation
-  - COST  # Costco Wholesale Corporation
-  
-  # Industrial sector
-  - BA    # The Boeing Company
-  - CAT   # Caterpillar Inc.
-  - GE    # General Electric Company
-  - HON   # Honeywell International Inc.
-  - UPS   # United Parcel Service Inc.
-  - FDX   # FedEx Corporation
-  - LMT   # Lockheed Martin Corporation
-  - RTX   # Raytheon Technologies Corporation
-  - DE    # Deere & Company
-  - MMM   # 3M Company
-  
-  # Energy sector
-  - XOM   # Exxon Mobil Corporation
-  - CVX   # Chevron Corporation
-  - COP   # ConocoPhillips
-  - EOG   # EOG Resources Inc.
-  - SLB   # Schlumberger Limited
-  - OXY   # Occidental Petroleum Corporation
-  - MPC   # Marathon Petroleum Corporation
-  - VLO   # Valero Energy Corporation
-  - PSX   # Phillips 66
-  - KMI   # Kinder Morgan Inc.
-  
-  # Communication sector
-  - VZ    # Verizon Communications Inc.
-  - T     # AT&T Inc.
-  - CMCSA # Comcast Corporation
-  - DIS   # The Walt Disney Company
-  - CHTR  # Charter Communications Inc.
-  - TMUS  # T-Mobile US Inc.
-  - EA    # Electronic Arts Inc.
-  - ATVI  # Activision Blizzard Inc.
-  - ZM    # Zoom Video Communications Inc.
-  
-  # Materials sector
-  - LIN   # Linde plc
-  - APD   # Air Products and Chemicals Inc.
-  - SHW   # Sherwin-Williams Company
-  - ECL   # Ecolab Inc.
-  - PPG   # PPG Industries Inc.
-  - NEM   # Newmont Corporation
-  - FCX   # Freeport-McMoRan Inc.
-  - DOW   # Dow Inc.
-  - DD    # DuPont de Nemours Inc.
-  - NUE   # Nucor Corporation
-  
-  # Real Estate sector
-  - AMT   # American Tower Corporation
-  - PLD   # Prologis Inc.
-  - CCI   # Crown Castle Inc.
-  - EQIX  # Equinix Inc.
-  - PSA   # Public Storage
-  - EXR   # Extra Space Storage Inc.
-  - AVB   # AvalonBay Communities Inc.
-  - EQR   # Equity Residential
-  - MAA   # Mid-America Apartment Communities Inc.
-  - UDR   # UDR Inc.
+  - AAPL
+  - MSFT
+  - GOOGL
+  - AMZN
+  - NVDA
+  - META
+  - TSLA
+  - JPM
+  - JNJ
+  - UNH
+  - PG
+  - KO
+  - WMT
+  - XOM
+  - V
+  - HD
+  - COST
+  - SPY
+  - QQQ
 
 # Data download settings
 download_settings:
