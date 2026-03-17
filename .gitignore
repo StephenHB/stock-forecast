@@ -355,6 +355,7 @@ results_*.json
 example_*.py
 test_*.py
 !tests/test_*.py
+!tests/**/test_*.py
 *_example.py
 *_test.py
 
