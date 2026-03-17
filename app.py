@@ -50,11 +50,16 @@ st.markdown("""
 
 @st.cache_data(ttl=3600)
 def load_available_stocks():
-    """Load stock list from config."""
+    """Load full stock universe: S&P 100 + market indices."""
     config_path = Path(__file__).parent / "config" / "stocks_config.yaml"
     with open(config_path) as f:
         config = yaml.safe_load(f)
-    return config.get("default_stocks", DEFAULT_STOCKS)
+    sp100 = config.get("sp100_stocks", [])
+    indices = config.get("market_indices", [])
+    defaults = config.get("default_stocks", DEFAULT_STOCKS)
+    # Combine: defaults first (quick picks), then indices, then full S&P 100
+    combined = list(dict.fromkeys(defaults + indices + sp100))
+    return combined
 
 
 @st.cache_data(ttl=300)
@@ -316,17 +321,15 @@ def main():
     st.markdown("Select stocks, set forecast horizon, and view backtesting results.")
 
     available_stocks = load_available_stocks()
-    # Use default + config, deduplicated
-    all_stocks = list(dict.fromkeys(DEFAULT_STOCKS + available_stocks[:20]))
 
     # Sidebar
     with st.sidebar:
         st.header("⚙️ Configuration")
         selected_stocks = st.multiselect(
             "Select stocks",
-            options=all_stocks,
+            options=available_stocks,
             default=["AAPL", "GOOGL", "NVDA"],
-            help="Choose one or more stocks to predict",
+            help="S&P 100 stocks + market indices (SPY, QQQ, etc.). Type to search.",
         )
         forecast_days = st.slider(
             "Forecast horizon (days)",
