@@ -511,14 +511,17 @@ def main():
             )
 
         # ═══════════════════════════════════════════════════════════════
-        # 1b. Capital Market Research (news, reports, impact features)
+        # 1b. Capital Market Research (news sentiment, SEC filings, impact features)
         # ═══════════════════════════════════════════════════════════════
-        with st.expander("📰 Capital Market Research (news, reports, impact features)"):
+        with st.expander("📰 Capital Market Research (news sentiment, SEC filings, impact features)"):
+            from src.research.news_report_analyzer import analyze_news_sentiment, summarize_financial_reports
             cmr = CapitalMarketResearcher()
             for sym in selected_stocks:
                 try:
                     result = cmr.research(sym)
                     st.markdown(f"### {sym}")
+
+                    # Impact features
                     col1, col2 = st.columns(2)
                     with col1:
                         st.markdown("**Short-run impact**")
@@ -528,13 +531,26 @@ def main():
                         st.markdown("**Long-run impact**")
                         for k, v in result.long_run.items():
                             st.caption(f"{k}: {v:.2f}" if isinstance(v, float) else f"{k}: {v}")
-                    st.markdown("**Top news**")
-                    for n in result.news[:5]:
-                        st.caption(f"• {n.title[:80]}...")
+
+                    # News with sentiment
+                    st.markdown("**Top news (with sentiment)**")
+                    analyses = analyze_news_sentiment([n.title for n in result.news])
+                    for n, a in zip(result.news[:6], analyses[:6]):
+                        label = "🟢" if a.sentiment_label == "positive" else ("🔴" if a.sentiment_label == "negative" else "⚪")
+                        st.caption(f"{label} {n.title[:85]}{'...' if len(n.title) > 85 else ''}")
+                    if analyses:
+                        pos = sum(1 for a in analyses if a.sentiment_label == "positive")
+                        neg = sum(1 for a in analyses if a.sentiment_label == "negative")
+                        neu = len(analyses) - pos - neg
+                        st.caption(f"*Sentiment summary: {pos} positive, {neg} negative, {neu} neutral*")
+
+                    # SEC filings
                     if result.reports:
-                        st.markdown("**Financial reports**")
-                        for r in result.reports[:5]:
-                            st.caption(f"• [{r.report_type}] {r.title[:60]}...")
+                        report_sum = summarize_financial_reports(result.reports)
+                        st.markdown(f"**SEC filings** ({report_sum.total_count} recent)")
+                        for r in result.reports[:6]:
+                            link = f"[{r.report_type}]({r.url})" if r.url else f"[{r.report_type}]"
+                            st.caption(f"• {link}: {r.title[:55]}{'...' if len(r.title) > 55 else ''}")
                 except Exception as e:
                     st.caption(f"{sym}: {e}")
 

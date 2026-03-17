@@ -30,3 +30,13 @@ When forecast horizon <= 5 days, the app now uses:
 - [x] Build short-run impact features: news_count, news_recency_days, earnings_announcement_days_ago, last_earnings_surprise_pct
 - [x] Build long-run impact features: revenue_growth_yoy, net_income_growth_yoy, pe_ratio, profit_margin, avg_earnings_surprise_pct, financial_reports_found
 - [x] Integrate into app (expander section)
+
+## Model Enhancement Research (feat/model-enhancement-research)
+
+- [x] Add news sentiment (keyword-based lexicon)
+- [x] Add SEC filings (10-K, 10-Q, 8-K) via yfinance
+- [x] Add feature importance (gain, SHAP, permutation)
+- [x] Document research findings in `docs/research/MODEL_ENHANCEMENT_RESEARCH.md`
+- [ ] PR: Merge `feat/model-enhancement-research` → `main`
+
+**Note:** Capital Market Research expander uses yfinance; expanding it may cause connection issues on some systems. Research features are UI-only; pipeline integration (`research_features.py`) is optional and not enabled by default.

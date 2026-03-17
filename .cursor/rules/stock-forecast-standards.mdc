@@ -26,7 +26,7 @@ src/feature_engineering/ → feature utilities
 notebooks/             → development and testing
 data/                  → CSV/parquet storage
 config/                → YAML config
-test/                  → unit tests
+tests/                 → unit tests
 ```
 
 ## Key Conventions
