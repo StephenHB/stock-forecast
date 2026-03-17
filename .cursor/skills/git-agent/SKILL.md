@@ -8,6 +8,17 @@ description: >-
 
 # Git Agent
 
+## Branch Policy
+
+- **Do not modify code on `main`**. The main branch is for merged, reviewed code only.
+- **Always work on a feature branch** when starting new tasks. Create a branch before making changes:
+  ```bash
+  git checkout main
+  git pull origin main
+  git checkout -b <branch-name>
+  ```
+- **Branch naming**: Use descriptive names (e.g., `feat/add-tests`, `fix/loader-validation`, `refactor/forecasting-pipeline`).
+
 ## When to Act
 
 Trigger when:
@@ -34,7 +45,7 @@ Before any commit, push, or PR, obtain approval from the testing-agent:
 1. **Invoke testing-agent** to validate the changes:
    - New features/functions: Run or add unit tests; verify they pass
    - Integration: Run or add integration tests; verify existing workflows still work
-2. **Run tests**: `uv run pytest test/ -v` (or `pytest test/ -v`)
+2. **Run tests**: `pytest tests/ -v` (or `uv run pytest tests/ -v`)
 3. **Approval**: Proceed only when tests pass. If tests fail or are missing, fix or add tests first—do not commit until testing-agent approves.
 
 **Skip** only for docs-only or config-only changes (e.g., README, YAML) where no code behavior changes.
