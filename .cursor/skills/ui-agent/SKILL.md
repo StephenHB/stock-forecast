@@ -25,23 +25,25 @@ Build interactive UIs that let users:
 ## UI Layout Pattern
 
 ```
-+------------------+------------------------+
-| Sidebar          | Main content           |
-| - Stock multi-   | - Predictions chart    |
-|   select         | - Historical prices    |
-| - Forecast days  | - Backtest metrics     |
-| - Backtest years | - Summary cards        |
-| - Run button     |                        |
-+------------------+------------------------+
++------------------+------------------------------------------------+
+| Sidebar          | Main content (tabs)                             |
+| - Stock multi-   | Overview: Predictions, Research, Metrics         |
+|   select (S&P    | Backtest: Forecast vs true price charts        |
+|   100 + indices) | Simulation: Trading results, equity curves       |
+| - Forecast days  | Historical: Daily close prices                  |
+| - Backtest years | Capital Market Research (expander): News        |
+| - Run button     |   sentiment, SEC filings, impact features       |
++------------------+------------------------------------------------+
 ```
 
 ## Key Components
 
-1. **Stock selection**: `st.multiselect` with config stocks
-2. **Forecast horizon**: `st.slider` or `st.number_input` (days)
-3. **Backtest config**: Sidebar, default 2 years
-4. **Results**: `st.metric` for MAPE/R², `st.dataframe` for tables, `st.line_chart` for series
-5. **Loading**: `st.spinner` during data fetch and model run
+1. **Stock selection**: `st.multiselect` with S&P 100 + market indices (SPY, QQQ, etc.)
+2. **Forecast horizon**: `st.slider` (1–30 days)
+3. **Backtest config**: Sidebar, 1–5 years
+4. **Tabs**: Overview, Backtest, Simulation, Historical
+5. **Capital Market Research** (expander): News with sentiment (🟢/🔴/⚪), SEC filings (10-K, 10-Q, 8-K) with links, short-run/long-run impact features
+6. **Results**: `st.metric`, `st.dataframe`, `st.line_chart`, `st.spinner`
 
 ## Conventions
 

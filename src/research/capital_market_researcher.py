@@ -115,6 +115,8 @@ class CapitalMarketResearcher:
         """
         Search for financial reports (10-K, 10-Q, earnings) of the company.
 
+        Uses yfinance sec_filings when available, then falls back to ResearchAgent search.
+
         Args:
             symbol: Stock ticker symbol
             max_results: Maximum search results
@@ -122,22 +124,53 @@ class CapitalMarketResearcher:
         Returns:
             List of FinancialReport
         """
-        query = f"{symbol} 10-K 10-Q annual report earnings SEC filing"
-        research = self.research_agent.search(query, max_results=max_results)
         reports = []
-        for i, (src, algo) in enumerate(
-            zip(research.sources, research.algorithms)
-        ):
-            report_type = "10-K" if "10-K" in algo or "annual" in algo.lower() else "10-Q" if "10-Q" in algo else "earnings"
-            title = algo.split(":")[0] if ":" in algo else algo[:80]
-            reports.append(
-                FinancialReport(
-                    title=title[:100],
-                    url=src or "",
-                    report_type=report_type,
-                )
-            )
-        return reports
+        seen = set()
+
+        # 1. Try yfinance sec_filings (10-K, 10-Q, 8-K, etc.)
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker(symbol)
+            filings = getattr(ticker, "sec_filings", None)
+            if filings and isinstance(filings, list):
+                for item in filings[:max_results]:
+                    if isinstance(item, dict):
+                        form_type = item.get("type", "filing")
+                        title = item.get("title", form_type)
+                        url = item.get("edgarUrl", item.get("link", ""))
+                        key = (form_type, str(item.get("date", "")), title[:40])
+                        if key not in seen:
+                            seen.add(key)
+                            reports.append(
+                                FinancialReport(
+                                    title=f"{form_type}: {title}"[:100],
+                                    url=url or "",
+                                    report_type=form_type,
+                                )
+                            )
+        except Exception as e:
+            logger.debug("yfinance sec_filings not available: %s", e)
+
+        # 2. Fallback: ResearchAgent search
+        if len(reports) < max_results:
+            query = f"{symbol} 10-K 10-Q annual report earnings SEC filing"
+            research = self.research_agent.search(query, max_results=max_results)
+            for i, (src, algo) in enumerate(
+                zip(research.sources, research.algorithms)
+            ):
+                report_type = "10-K" if "10-K" in algo or "annual" in algo.lower() else "10-Q" if "10-Q" in algo else "earnings"
+                title = algo.split(":")[0] if ":" in algo else algo[:80]
+                key = (report_type, title[:50])
+                if key not in seen:
+                    seen.add(key)
+                    reports.append(
+                        FinancialReport(
+                            title=title[:100],
+                            url=src or "",
+                            report_type=report_type,
+                        )
+                    )
+        return reports[:max_results]
 
     def get_financial_metrics(self, symbol: str) -> Dict[str, Any]:
         """
@@ -297,6 +330,15 @@ class CapitalMarketResearcher:
             metrics.get("avg_earnings_surprise_pct") or 0.0
         )
         long_run["financial_reports_found"] = float(len(reports))
+
+        # News sentiment (from news_report_analyzer)
+        try:
+            from .news_report_analyzer import get_news_sentiment_features, analyze_news_sentiment
+            analyses = analyze_news_sentiment([n.title for n in news])
+            for k, v in get_news_sentiment_features(analyses).items():
+                short_run[k] = v
+        except Exception as e:
+            logger.debug("News sentiment analysis skipped: %s", e)
 
         return ImpactFeatures(
             short_run=short_run,

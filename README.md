@@ -4,34 +4,42 @@ A comprehensive stock forecasting system with machine learning models for analyz
 
 ## Features
 
-- **Data Download**: Download S&P 500 stock data from Yahoo Finance API
-- **Configurable Stock Selection**: Customize which stocks to analyze via YAML configuration
-- **Data Preprocessing**: Clean, validate, and engineer features from raw stock data
-- **Technical Indicators**: Calculate various technical indicators (RSI, MACD, Bollinger Bands, etc.)
-- **Feature Engineering**: Create machine learning features with lag variables and rolling statistics
-- **Flexible Storage**: Save data in multiple formats (CSV, Parquet, Pickle)
-- **Incremental Updates**: Efficiently update data by downloading only new records
-- **Centralized Storage**: Data stored in `/Users/stephenzhang/Downloads/stock_data`
+- **Streamlit UI**: Interactive app for stock selection, forecasting, backtesting, and trading simulation
+- **S&P 100 + Market Indices**: Select from 100+ stocks and ETFs (SPY, QQQ, DIA, etc.)
+- **LightGBM Forecasting**: Daily (≤5 days) and weekly horizon with volatility features
+- **Trading Simulation**: $100k simulation with forecast-based buy/sell, transaction fees
+- **Capital Market Research**: News sentiment, SEC filings (10-K, 10-Q, 8-K), impact features
+- **Feature Importance**: Gain-based and SHAP (optional) for directional analysis
+- **Data Download**: Yahoo Finance API, configurable via YAML
+- **Data Preprocessing**: Validate, clean, technical indicators (RSI, MACD, Bollinger Bands)
+- **Incremental Updates**: Efficient data refresh
 
 ## Project Structure
 
 ```
 stock-forecast/
+├── app.py                        # Streamlit UI (forecast, backtest, simulation)
 ├── src/
-│   ├── data_preprocess/          # Data cleaning and feature engineering
-│   │   ├── __init__.py
-│   │   ├── stock_data_loader.py  # Main data loading functionality
-│   │   └── data_preprocess_utils.py  # Utility functions
-│   └── model/                    # Machine learning models (to be implemented)
-├── data/                         # Local data directory (for structure only)
-│   ├── raw/                      # Raw downloaded data (moved to Downloads)
-│   └── processed/                # Processed data (moved to Downloads)
+│   ├── data_preprocess/          # Data loading, validation, cleaning
+│   │   ├── stock_data_loader.py
+│   │   └── data_preprocess_utils.py
+│   ├── forecasting/              # LightGBM, backtesting, simulation
+│   │   ├── feature_factory.py    # Daily/weekly features
+│   │   ├── standalone_backtester.py
+│   │   ├── trading_simulator.py
+│   │   ├── feature_importance.py  # SHAP, permutation importance
+│   │   └── research_features.py  # News/report feature integration
+│   ├── research/                 # Capital market research
+│   │   ├── capital_market_researcher.py
+│   │   ├── news_report_analyzer.py  # Sentiment, SEC filings
+│   │   └── research_agent.py
+│   └── feature_engineering/      # Lag, rolling, technical features
 ├── config/
-│   └── stocks_config.yaml        # Stock selection and download configuration
-├── notebooks/                    # Jupyter notebooks for development
-├── test/                         # Unit tests
-├── pyproject.toml               # Dependencies and project configuration
-└── example_usage.py             # Example usage script
+│   └── stocks_config.yaml        # S&P 100, market indices, download settings
+├── tests/                        # Unit and integration tests
+├── notebooks/                    # Backtesting, model enhancement research
+├── docs/research/                # Research documentation
+└── pyproject.toml
 ```
 
 ## Installation
@@ -122,28 +130,30 @@ The notebook provides comprehensive visualizations including:
 
 Edit `config/stocks_config.yaml` to customize:
 
-- **Stock Selection**: Choose which stocks to download (default: top 100 S&P 500 stocks)
-- **Download Settings**: Date ranges, intervals, and API parameters
-- **Storage Settings**: Data format and compression options
+- **sp100_stocks**: S&P 100 constituents
+- **market_indices**: SPY, QQQ, DIA, IWM, VOO, VTI, OEF
+- **default_stocks**: Quick-pick subset
+- **download_settings**: Date ranges, intervals, API parameters
 
 ### Example Configuration
 
 ```yaml
-default_stocks:
+sp100_stocks:
   - AAPL
   - MSFT
   - GOOGL
+  # ... full S&P 100 list
+
+market_indices:
+  - SPY
+  - QQQ
+  - DIA
 
 download_settings:
   start_date: "2020-01-01"
-  end_date: null  # null means current date
+  end_date: null
   interval: "1d"
   auto_adjust: true
-
-storage_settings:
-  data_format: "csv"
-  save_raw_data: true
-  save_processed_data: true
 ```
 
 ## Usage Examples
@@ -199,13 +209,16 @@ The system automatically creates the following features:
 
 ## Dependencies
 
-Key dependencies include:
-- `pandas`: Data manipulation and analysis
-- `numpy`: Numerical computing
-- `yfinance`: Yahoo Finance API integration
-- `scikit-learn`: Machine learning algorithms
-- `matplotlib` & `seaborn`: Data visualization
-- `pyyaml`: Configuration file handling
+Key dependencies:
+- `pandas`, `numpy`: Data manipulation
+- `yfinance`: Yahoo Finance API
+- `lightgbm`, `scikit-learn`: Forecasting
+- `streamlit`: Interactive UI
+- `pyyaml`: Configuration
+
+Optional (for research):
+- `shap`: Feature importance (directional)
+- `duckduckgo-search`: Research agent search
 
 ## AI Agent Setup
 

@@ -32,12 +32,13 @@ When working on data analysis, ML, or notebooks in this project:
 |------|---------|
 | `src/` | Production-ready code |
 | `src/data_preprocess/` | Data loading, cleaning, feature engineering |
-| `src/forecasting/` | Forecasting pipeline, LGBM, backtesting |
-| `src/feature_engineering/` | Feature engineering utilities |
-| `data/` | CSV/parquet data storage |
-| `notebooks/` | Development and testing |
-| `test/` | Unit tests |
-| `config/` | YAML configuration |
+| `src/forecasting/` | LGBM, backtesting, trading simulation, feature importance |
+| `src/research/` | Capital market researcher, news sentiment, SEC filings |
+| `src/feature_engineering/` | Lag, rolling, technical features |
+| `tests/` | Unit and integration tests |
+| `notebooks/` | Backtesting, model enhancement research |
+| `config/` | S&P 100, market indices, YAML config |
+| `docs/research/` | Research documentation |
 
 ## ML Validation Checklist
 
