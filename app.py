@@ -314,7 +314,15 @@ def run_forecast(
             model = lgb.LGBMRegressor(**best_params)
             model.fit(X_scaled, y)
 
-            last_row = data.iloc[-1:][feature_columns]
+            # Use the most recent row from `features` (before target was appended)
+            # so the prediction is anchored to TODAY, not to `forecast_days` ago.
+            # data.iloc[-1] would be forecast_days old because dropna() removes the
+            # last `forecast_days` rows whose target is still NaN (future not yet known).
+            latest = features[feature_columns].dropna()
+            if latest.empty:
+                results[symbol] = {"error": "Insufficient feature data for prediction"}
+                continue
+            last_row = latest.iloc[-1:]
             X_pred = scaler.transform(last_row)
             pred_price = float(model.predict(X_pred)[0])
             last_price = float(daily["Close"].iloc[-1])
