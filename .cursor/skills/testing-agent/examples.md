@@ -5,25 +5,23 @@
 ```python
 # tests/forecasting/test_lgbm_forecaster.py
 import pytest
-import pandas as pd
-from src.forecasting.lgbm_forecaster import LGBMForecaster
+from src.forecasting.lgbm_forecaster import LightGBMForecaster
 
-def test_forecaster_fit_predict_returns_expected_shape():
+def test_forecaster_fit_predict_returns_expected_shape(sample_features_df, sample_target_series):
     """New feature: forecaster produces predictions with correct shape."""
-    X = pd.DataFrame({"feature_1": [1, 2, 3], "feature_2": [4, 5, 6]})
-    y = pd.Series([0.1, 0.2, 0.3])
-    forecaster = LGBMForecaster()
-    forecaster.fit(X, y)
+    X = sample_features_df.loc[sample_target_series.index]
+    y = sample_target_series
+    forecaster = LightGBMForecaster(forecast_horizon=4, verbose=False)
+    forecaster.fit(X, y, hyperparameter_tuning=False)
     preds = forecaster.predict(X)
     assert len(preds) == len(X)
     assert preds.ndim == 1
 
-def test_forecaster_handles_empty_input():
-    """Edge case: empty input raises or returns expected result."""
-    forecaster = LGBMForecaster()
-    X_empty = pd.DataFrame()
-    with pytest.raises(ValueError):
-        forecaster.predict(X_empty)
+def test_forecaster_requires_fit_before_predict(sample_features_df):
+    """Edge case: predict before fit raises ValueError."""
+    forecaster = LightGBMForecaster(verbose=False)
+    with pytest.raises(ValueError, match="must be fitted"):
+        forecaster.predict(sample_features_df)
 ```
 
 ## Integration Test Example
@@ -31,22 +29,22 @@ def test_forecaster_handles_empty_input():
 ```python
 # tests/test_integration.py
 import pytest
-from src.data_preprocess import StockDataLoader
 from src.forecasting import ForecastingPipeline
 
-def test_data_to_forecast_pipeline_integration(config_stocks, tmp_path):
-    """Existing workflow: load → preprocess → forecast runs end-to-end."""
-    loader = StockDataLoader(data_dir=str(tmp_path))
-    # Use fixture or minimal real data
-    data = loader.download_stock_data(
-        stock_symbols=["AAPL"],
-        start_date="2023-01-01",
-        end_date="2023-06-30"
+def test_pipeline_fit_predict_returns_results(sample_daily_stock_long):
+    """Existing workflow: daily data → ForecastingPipeline fit_predict runs end-to-end."""
+    pipeline = ForecastingPipeline(
+        forecast_horizon=2,
+        backtest_windows=2,
+        hyperparameter_tuning=False,
     )
-    pipeline = ForecastingPipeline()
-    result = pipeline.run(data["AAPL"])
-    assert "predictions" in result
-    assert len(result["predictions"]) > 0
+    results = pipeline.fit_predict(
+        sample_daily_stock_long,
+        run_backtesting=False,
+    )
+    assert "predictions" in results
+    assert results["predictions"] is not None
+    assert "data_info" in results
 ```
 
 ## Fixture Example
@@ -54,15 +52,19 @@ def test_data_to_forecast_pipeline_integration(config_stocks, tmp_path):
 ```python
 # tests/conftest.py
 import pytest
+import pandas as pd
+import numpy as np
 
 @pytest.fixture
 def sample_stock_df():
-    """Minimal DataFrame for testing."""
+    """Minimal daily stock DataFrame for testing."""
+    dates = pd.date_range("2023-01-01", periods=30, freq="D")
     return pd.DataFrame({
-        "Open": [100, 101, 102],
-        "High": [105, 106, 107],
-        "Low": [99, 100, 101],
-        "Close": [104, 105, 106],
-        "Volume": [1e6, 1.1e6, 1.2e6],
-    }, index=pd.DatetimeIndex(["2023-01-01", "2023-01-02", "2023-01-03"]))
+        "Date": dates,
+        "Open": np.linspace(100, 130, 30),
+        "High": np.linspace(105, 135, 30),
+        "Low": np.linspace(98, 128, 30),
+        "Close": np.linspace(103, 133, 30),
+        "Volume": np.full(30, 1e6),
+    })
 ```
