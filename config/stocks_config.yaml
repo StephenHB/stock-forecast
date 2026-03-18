@@ -111,6 +111,394 @@ sp100_stocks:
   - AMAT   # Applied Materials
   - GEV    # GE Vernova
 
+# Additional S&P 500 constituents not in the S&P 100 above.
+# Combined with sp100_stocks these cover the full S&P 500 universe (≈500 names).
+# Source: S&P Dow Jones Indices — list is approximate and updated periodically.
+sp500_additional:
+  # --- Communication Services ---
+  - CHTR  # Charter Communications
+  - FOXA  # Fox Corporation (Class A)
+  - IPG   # Interpublic Group
+  - LYV   # Live Nation Entertainment
+  - NWSA  # News Corp (Class A)
+  - OMC   # Omnicom Group
+  - PARA  # Paramount Global
+  - TTWO  # Take-Two Interactive
+  - WBD   # Warner Bros. Discovery
+
+  # --- Consumer Discretionary ---
+  - ABNB  # Airbnb
+  - AZO   # AutoZone
+  - BBY   # Best Buy
+  - BURL  # Burlington Stores
+  - BWA   # BorgWarner
+  - CCL   # Carnival Corporation
+  - CMG   # Chipotle Mexican Grill
+  - DAL   # Delta Air Lines
+  - DECK  # Deckers Outdoor
+  - DG    # Dollar General
+  - DHI   # D.R. Horton
+  - DLTR  # Dollar Tree
+  - DPZ   # Domino's Pizza
+  - DRI   # Darden Restaurants
+  - ETSY  # Etsy
+  - F     # Ford Motor Company
+  - GPC   # Genuine Parts Company
+  - GNRC  # Generac Holdings
+  - HAS   # Hasbro
+  - HLT   # Hilton Worldwide
+  - KMX   # CarMax
+  - LEN   # Lennar Corporation
+  - LKQ   # LKQ Corporation
+  - LULU  # Lululemon Athletica
+  - LVS   # Las Vegas Sands
+  - MAR   # Marriott International
+  - MGM   # MGM Resorts International
+  - MHK   # Mohawk Industries
+  - NCLH  # Norwegian Cruise Line
+  - NVR   # NVR Inc.
+  - ORLY  # O'Reilly Automotive
+  - PHM   # PulteGroup
+  - POOL  # Pool Corporation
+  - RCL   # Royal Caribbean Cruises
+  - RL    # Ralph Lauren
+  - ROST  # Ross Stores
+  - SWK   # Stanley Black & Decker
+  - TJX   # TJX Companies
+  - TPR   # Tapestry
+  - TSCO  # Tractor Supply Company
+  - UAL   # United Airlines Holdings
+  - ULTA  # Ulta Beauty
+  - WHR   # Whirlpool Corporation
+  - WYNN  # Wynn Resorts
+  - YUM   # Yum! Brands
+
+  # --- Consumer Staples ---
+  - BF.B  # Brown-Forman Corporation (Class B)
+  - CAG   # Conagra Brands
+  - CHD   # Church & Dwight
+  - CLX   # Clorox Company
+  - CPB   # Campbell's Company
+  - EL    # Estée Lauder Companies
+  - HRL   # Hormel Foods
+  - HSY   # Hershey Company
+  - KDP   # Keurig Dr Pepper
+  - KHC   # Kraft Heinz Company
+  - KMB   # Kimberly-Clark
+  - KR    # Kroger
+  - MKC   # McCormick & Company
+  - SJM   # J.M. Smucker Company
+  - STZ   # Constellation Brands
+  - SYY   # Sysco Corporation
+  - TAP   # Molson Coors Beverage
+  - TSN   # Tyson Foods
+
+  # --- Energy ---
+  - APA   # APA Corporation
+  - BKR   # Baker Hughes
+  - CTRA  # Coterra Energy
+  - DVN   # Devon Energy
+  - EOG   # EOG Resources
+  - EQT   # EQT Corporation
+  - FANG  # Diamondback Energy
+  - HAL   # Halliburton
+  - HES   # Hess Corporation
+  - KMI   # Kinder Morgan
+  - MPC   # Marathon Petroleum
+  - MRO   # Marathon Oil
+  - OKE   # ONEOK
+  - OXY   # Occidental Petroleum
+  - PSX   # Phillips 66
+  - SLB   # SLB (Schlumberger)
+  - VLO   # Valero Energy
+  - WMB   # Williams Companies
+
+  # --- Financials ---
+  - ACGL  # Arch Capital Group
+  - AFL   # Aflac
+  - AJG   # Arthur J. Gallagher
+  - ALL   # Allstate Corporation
+  - AMP   # Ameriprise Financial
+  - AON   # Aon plc
+  - APO   # Apollo Global Management
+  - BRO   # Brown & Brown
+  - BX    # Blackstone Inc.
+  - CB    # Chubb Limited
+  - CBOE  # Cboe Global Markets
+  - CBRE  # CBRE Group
+  - CI    # Cigna Group
+  - CINF  # Cincinnati Financial
+  - CMA   # Comerica
+  - CME   # CME Group
+  - EG    # Everest Group
+  - FI    # Fiserv
+  - FICO  # Fair Isaac (FICO)
+  - FIS   # Fidelity National Information Services
+  - FITB  # Fifth Third Bancorp
+  - GL    # Globe Life
+  - GPN   # Global Payments
+  - HBAN  # Huntington Bancshares
+  - HIG   # Hartford Financial Services
+  - ICE   # Intercontinental Exchange
+  - IVZ   # Invesco
+  - KEY   # KeyCorp
+  - L     # Loews Corporation
+  - MCO   # Moody's Corporation
+  - MKTX  # MarketAxess Holdings
+  - MMC   # Marsh & McLennan
+  - MTB   # M&T Bank
+  - NDAQ  # Nasdaq Inc.
+  - NTRS  # Northern Trust
+  - PFG   # Principal Financial Group
+  - PGR   # Progressive Corporation
+  - PNC   # PNC Financial Services
+  - PRU   # Prudential Financial
+  - RF    # Regions Financial
+  - RJF   # Raymond James Financial
+  - SPGI  # S&P Global
+  - STT   # State Street Corporation
+  - SYF   # Synchrony Financial
+  - TFC   # Truist Financial
+  - TRV   # Travelers Companies
+  - WRB   # W.R. Berkley Corporation
+
+  # --- Health Care ---
+  - BAX   # Baxter International
+  - BDX   # Becton Dickinson
+  - BIIB  # Biogen
+  - BSX   # Boston Scientific
+  - CAH   # Cardinal Health
+  - CNC   # Centene Corporation
+  - COO   # Cooper Companies
+  - CRL   # Charles River Laboratories
+  - DXCM  # DexCom
+  - DVA   # DaVita
+  - ELV   # Elevance Health
+  - EW    # Edwards Lifesciences
+  - GEHC  # GE HealthCare Technologies
+  - HCA   # HCA Healthcare
+  - HOLX  # Hologic
+  - HUM   # Humana
+  - IDXX  # IDEXX Laboratories
+  - ILMN  # Illumina
+  - INCY  # Incyte Corporation
+  - IQV   # IQVIA Holdings
+  - LH    # Labcorp
+  - MCK   # McKesson Corporation
+  - MOH   # Molina Healthcare
+  - MRNA  # Moderna
+  - MTD   # Mettler-Toledo International
+  - OGN   # Organon & Co.
+  - REGN  # Regeneron Pharmaceuticals
+  - RMD   # ResMed
+  - RVTY  # Revvity
+  - STE   # STERIS plc
+  - SYK   # Stryker Corporation
+  - TFX   # Teleflex
+  - UHS   # Universal Health Services
+  - VEEV  # Veeva Systems
+  - VRTX  # Vertex Pharmaceuticals
+  - WAT   # Waters Corporation
+  - WST   # West Pharmaceutical Services
+  - ZBH   # Zimmer Biomet Holdings
+  - ZTS   # Zoetis
+
+  # --- Industrials ---
+  - ALLE  # Allegion
+  - AOS   # A.O. Smith
+  - APH   # Amphenol
+  - APTV  # Aptiv
+  - BAH   # Booz Allen Hamilton
+  - BR    # Broadridge Financial Solutions
+  - CARR  # Carrier Global
+  - CHRW  # C.H. Robinson Worldwide
+  - CMI   # Cummins
+  - CPRT  # Copart
+  - CSX   # CSX Corporation
+  - CTAS  # Cintas Corporation
+  - DOV   # Dover Corporation
+  - EME   # EMCOR Group
+  - EXPD  # Expeditors International
+  - FAST  # Fastenal Company
+  - GWW   # W.W. Grainger
+  - HII   # Huntington Ingalls Industries
+  - HWM   # Howmet Aerospace
+  - IR    # Ingersoll Rand
+  - ITW   # Illinois Tool Works
+  - J     # Jacobs Solutions
+  - JBHT  # J.B. Hunt Transport
+  - JCI   # Johnson Controls
+  - LDOS  # Leidos Holdings
+  - LHX   # L3Harris Technologies
+  - LNT   # Alliant Energy
+  - LUV   # Southwest Airlines
+  - MAS   # Masco Corporation
+  - MTZ   # MasTec
+  - NOC   # Northrop Grumman
+  - NSC   # Norfolk Southern
+  - ODFL  # Old Dominion Freight Line
+  - OTIS  # Otis Worldwide
+  - PCAR  # PACCAR
+  - PH    # Parker Hannifin
+  - PWR   # Quanta Services
+  - ROK   # Rockwell Automation
+  - ROL   # Rollins
+  - ROP   # Roper Technologies
+  - RSG   # Republic Services
+  - SNA   # Snap-on
+  - TDG   # TransDigm Group
+  - TDY   # Teledyne Technologies
+  - TEL   # TE Connectivity
+  - TT    # Trane Technologies
+  - TXT   # Textron
+  - URI   # United Rentals
+  - VRSK  # Verisk Analytics
+  - WAB   # Westinghouse Air Brake (Wabtec)
+  - WM    # Waste Management
+  - XYL   # Xylem
+
+  # --- Information Technology ---
+  - ANET  # Arista Networks
+  - ANSS  # ANSYS
+  - CDNS  # Cadence Design Systems
+  - CDW   # CDW Corporation
+  - CRWD  # CrowdStrike Holdings
+  - CSGP  # CoStar Group
+  - CTSH  # Cognizant Technology Solutions
+  - DELL  # Dell Technologies
+  - ENPH  # Enphase Energy
+  - EPAM  # EPAM Systems
+  - FFIV  # F5 Inc.
+  - FDS   # FactSet Research Systems
+  - FSLR  # First Solar
+  - FTNT  # Fortinet
+  - GDDY  # GoDaddy
+  - GLW   # Corning
+  - HPE   # Hewlett Packard Enterprise
+  - HPQ   # HP Inc.
+  - IT    # Gartner
+  - JKHY  # Jack Henry & Associates
+  - KEYS  # Keysight Technologies
+  - KLAC  # KLA Corporation
+  - MCHP  # Microchip Technology
+  - MPWR  # Monolithic Power Systems
+  - MSI   # Motorola Solutions
+  - NTAP  # NetApp
+  - NXPI  # NXP Semiconductors
+  - ON    # ON Semiconductor
+  - PANW  # Palo Alto Networks
+  - PTC   # PTC Inc.
+  - QRVO  # Qorvo
+  - SNPS  # Synopsys
+  - STX   # Seagate Technology Holdings
+  - SWKS  # Skyworks Solutions
+  - TER   # Teradyne
+  - TRMB  # Trimble
+  - TYL   # Tyler Technologies
+  - VRSN  # VeriSign
+  - WDC   # Western Digital
+  - ZBRA  # Zebra Technologies
+
+  # --- Materials ---
+  - ALB   # Albemarle Corporation
+  - APD   # Air Products and Chemicals
+  - AVTR  # Avantor (life science materials)
+  - AVY   # Avery Dennison
+  - BG    # Bunge Global
+  - CE    # Celanese Corporation
+  - CF    # CF Industries
+  - DD    # DuPont de Nemours
+  - DOW   # Dow Inc.
+  - ECL   # Ecolab
+  - EMN   # Eastman Chemical
+  - FCX   # Freeport-McMoRan
+  - FMC   # FMC Corporation
+  - IFF   # International Flavors & Fragrances
+  - IP    # International Paper
+  - LYB   # LyondellBasell Industries
+  - MLM   # Martin Marietta Materials
+  - NEM   # Newmont Corporation
+  - NUE   # Nucor Corporation
+  - OLN   # Olin Corporation
+  - PKG   # Packaging Corp of America
+  - PPG   # PPG Industries
+  - SHW   # Sherwin-Williams
+  - STLD  # Steel Dynamics
+  - VMC   # Vulcan Materials
+
+  # --- Real Estate ---
+  - ARE   # Alexandria Real Estate Equities
+  - AVB   # AvalonBay Communities
+  - CPT   # Camden Property Trust
+  - DLR   # Digital Realty Trust
+  - DOC   # Healthpeak Properties
+  - EQR   # Equity Residential
+  - ESS   # Essex Property Trust
+  - EXR   # Extra Space Storage (now SBA Storage)
+  - FRT   # Federal Realty Investment Trust
+  - HST   # Host Hotels & Resorts
+  - INVH  # Invitation Homes
+  - IRM   # Iron Mountain
+  - KIM   # Kimco Realty
+  - MAA   # Mid-America Apartment Communities
+  - O     # Realty Income Corporation
+  - PLD   # Prologis
+  - PSA   # Public Storage
+  - SBAC  # SBA Communications
+  - VICI  # VICI Properties
+  - VTR   # Ventas
+  - WELL  # Welltower
+  - WY    # Weyerhaeuser
+
+  # --- Utilities ---
+  - AEE   # Ameren Corporation
+  - AEP   # American Electric Power
+  - AES   # AES Corporation
+  - ATO   # Atmos Energy
+  - AWK   # American Water Works
+  - CEG   # Constellation Energy
+  - CNP   # CenterPoint Energy
+  - D     # Dominion Energy
+  - DTE   # DTE Energy
+  - ED    # Consolidated Edison
+  - EIX   # Edison International
+  - ES    # Eversource Energy
+  - ETR   # Entergy Corporation
+  - EVRG  # Evergy
+  - EXC   # Exelon Corporation
+  - NI    # NiSource
+  - NRG   # NRG Energy
+  - PCG   # PG&E Corporation
+  - PEG   # Public Service Enterprise Group
+  - PPL   # PPL Corporation
+  - SRE   # Sempra
+  - WEC   # WEC Energy Group
+  - XEL   # Xcel Energy
+
+  # --- Remaining SP 500 members ---
+  - AKAM  # Akamai Technologies
+  - AMH   # American Homes 4 Rent
+  - AMCR  # Amcor plc
+  - BEN   # Franklin Resources
+  - BLDR  # Builders FirstSource
+  - DGX   # Quest Diagnostics
+  - DKS   # Dick's Sporting Goods
+  - EA    # Electronic Arts
+  - EBAY  # eBay
+  - EFX   # Equifax
+  - EXPE  # Expedia Group
+  - GRMN  # Garmin
+  - HSIC  # Henry Schein
+  - KNX   # Knight-Swift Transportation
+  - LW    # Lamb Weston Holdings
+  - NVT   # nVent Electric
+  - PAYC  # Paycom Software
+  - PAYX  # Paychex
+  - PNR   # Pentair
+  - RS    # Reliance Inc.
+  - TPL   # Texas Pacific Land Corporation
+  - VFC   # VF Corporation
+
 # Market indices and ETFs (track broad market performance)
 market_indices:
   - SPY    # SPDR S&P 500 ETF

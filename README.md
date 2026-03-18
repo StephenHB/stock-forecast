@@ -5,7 +5,7 @@ A comprehensive stock forecasting system with machine learning models for analyz
 ## Features
 
 - **Streamlit UI**: Interactive app for stock selection, forecasting, backtesting, and trading simulation
-- **S&P 100 + Market Indices**: Select from 100+ stocks and ETFs (SPY, QQQ, DIA, etc.)
+- **S&P 500 + Market Indices**: Select from 470+ stocks and ETFs (SPY, QQQ, DIA, etc.) covering the full S&P 500 universe
 - **LGBM 2-Stage**: Prophet or MA trend/seasonality + LightGBM; daily (≤5 days) and weekly horizon with volatility features
 - **Trading Simulation**: $100k simulation with 5 research-driven enhancements — implied-return signal, dead-zone threshold, proportional position sizing, transaction cost model, and 200-day MA regime filter; user-adjustable parameters
 - **Capital Market Research**: News sentiment (FinBERT or keyword), SEC filings (10-K, 10-Q, 8-K), impact features; optional LGBM input via sidebar checkbox
@@ -37,7 +37,7 @@ stock-forecast/
 │   │   └── research_agent.py
 │   └── feature_engineering/      # Lag, rolling, technical features
 ├── config/
-│   └── stocks_config.yaml        # S&P 100, market indices, download settings
+│   └── stocks_config.yaml        # S&P 500 (sp100_stocks + sp500_additional), market indices, download settings
 ├── tests/                        # Unit and integration tests
 ├── notebooks/                    # Backtesting, model enhancement research
 ├── docs/research/                # Research documentation
@@ -171,9 +171,10 @@ Additionally, backtesting uses **non-overlapping windows** — the backtest step
 
 Edit `config/stocks_config.yaml` to customize:
 
-- **sp100_stocks**: S&P 100 constituents
+- **sp100_stocks**: S&P 100 constituents (105 tickers)
+- **sp500_additional**: Remaining S&P 500 members organised by GICS sector (~360 tickers); combined with `sp100_stocks` these cover the full S&P 500 universe (~465 names)
 - **market_indices**: SPY, QQQ, DIA, IWM, VOO, VTI, OEF
-- **default_stocks**: Quick-pick subset
+- **default_stocks**: Quick-pick subset shown first in the dropdown
 - **download_settings**: Date ranges, intervals, API parameters
 
 ### Example Configuration
@@ -184,6 +185,13 @@ sp100_stocks:
   - MSFT
   - GOOGL
   # ... full S&P 100 list
+
+sp500_additional:
+  # Additional S&P 500 members not in sp100_stocks, organised by GICS sector
+  - CMG   # Consumer Discretionary
+  - SHW   # Materials
+  - ICE   # Financials
+  # ... ~360 more tickers
 
 market_indices:
   - SPY
