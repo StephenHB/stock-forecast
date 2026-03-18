@@ -202,7 +202,11 @@ def run_backtest(
             backtester = StandaloneBacktester(
                 initial_train_size=initial_train,
                 test_size=1,
-                step_size=1,
+                # Non-overlapping windows: step forward by the full horizon so
+                # consecutive signals don't share target days.
+                # Daily: step by forecast_days (e.g. 5-day horizon → signal every 5 days).
+                # Weekly: step by 1 week (already matches a 1-week-ahead target).
+                step_size=forecast_days if use_daily else 1,
                 min_train_size=min_train,
                 target_column=target_col,
                 forecast_horizon=forecast_horizon_weeks if not use_daily else forecast_days,
@@ -375,6 +379,34 @@ def main():
             value=False,
             help="Add news sentiment, earnings, and financial metrics as LGBM features. May be slow or unstable on some systems.",
         )
+
+        with st.expander("⚙️ Simulation Settings"):
+            sim_threshold_pct = st.slider(
+                "Signal threshold (%)",
+                min_value=0.0,
+                max_value=3.0,
+                value=0.5,
+                step=0.1,
+                help=(
+                    "Dead-zone half-width. Only trade when the model's implied "
+                    "predicted move exceeds this percentage. Signals inside the "
+                    "dead zone keep the current position unchanged, reducing "
+                    "whipsaw trades. Set to 0 to disable."
+                ),
+            )
+            sim_cost_pct = st.slider(
+                "Transaction cost per side (%)",
+                min_value=0.0,
+                max_value=0.5,
+                value=0.1,
+                step=0.01,
+                help=(
+                    "Fractional cost applied to every buy and sell execution "
+                    "(commissions + bid-ask spread). 0.1% is a realistic "
+                    "estimate for liquid US equities. Set to 0 to disable."
+                ),
+            )
+
         run_btn = st.button("🚀 Run Forecast & Backtest", type="primary")
 
         st.divider()
@@ -430,6 +462,8 @@ def main():
                 backtest_results,
                 price_series_by_symbol,
                 initial_cash_per_stock=cash_per_stock,
+                threshold_pct=sim_threshold_pct,
+                cost_per_side=sim_cost_pct / 100.0,
             )
 
         # Main content
@@ -466,22 +500,33 @@ def main():
         st.caption(f"Analysis date: {analysis_date.strftime('%Y-%m-%d')} · Current: {current_dt}")
         st.divider()
 
-        # Backtest results - sidebar summary
-        st.sidebar.header("📊 Backtest Summary")
+        # Forecast summary - sidebar
+        st.sidebar.header("📊 Forecast Summary")
         for sym in selected_stocks:
-            if sym in backtest_results and "error" not in backtest_results[sym]:
-                r = backtest_results[sym]
-                pred_price = None
-                if sym in forecast_results and "error" not in forecast_results[sym]:
-                    preds = forecast_results[sym].get("predictions", {})
-                    pred_price = list(preds.values())[0] if preds else None
-                st.sidebar.metric(
-                    f"{sym} MAPE",
-                    f"{r['mape']:.1f}%",
-                    f"Pred: ${pred_price:,.2f}" if pred_price is not None else "—",
-                )
-            elif sym in backtest_results:
+            has_error = sym in backtest_results and "error" in backtest_results[sym]
+            if has_error:
                 st.sidebar.error(f"{sym}: {backtest_results[sym]['error']}")
+                continue
+
+            pred_price = None
+            last_price_fc = None
+            if sym in forecast_results and "error" not in forecast_results[sym]:
+                preds = forecast_results[sym].get("predictions", {})
+                pred_price = list(preds.values())[0] if preds else None
+                last_price_fc = forecast_results[sym].get("last_price")
+
+            if pred_price is not None and last_price_fc is not None:
+                pct_change = (pred_price - last_price_fc) / last_price_fc * 100
+                delta_str = f"{pct_change:+.2f}% in {forecast_days}d"
+                delta_color = "normal" if pred_price >= last_price_fc else "inverse"
+                st.sidebar.metric(
+                    label=sym,
+                    value=f"${pred_price:,.2f}",
+                    delta=delta_str,
+                    delta_color=delta_color,
+                )
+            elif sym in backtest_results and "error" not in backtest_results[sym]:
+                st.sidebar.metric(label=sym, value="—", delta=None)
 
         # Main content tabs
         tab_overview, tab_backtest, tab_simulation, tab_historical = st.tabs([
@@ -667,15 +712,121 @@ def main():
                 st.info("No backtest data available.")
 
         # ═══════════════════════════════════════════════════════════
-        # TAB 3: Trading Simulation (100k, buy on up forecast, sell on down)
+        # TAB 3: Trading Simulation
         # ═══════════════════════════════════════════════════════════
         with tab_simulation:
             st.subheader("💰 Trading Simulation")
-            st.caption(
-                f"Assume ${initial_cash_total:,.0f} total cash, split equally across stocks. "
-                "Buy when forecast says price will go up, sell when forecast says down. "
-                "Each period: either sell all shares or buy with all available cash."
-            )
+
+            # ── Strategy explanation ──────────────────────────────
+            with st.expander("📖 How This Strategy Works", expanded=False):
+                full_conviction_display = sim_threshold_pct * 3.0
+                st.markdown(f"""
+This simulation applies **5 research-driven rules** on top of the LGBM forecast:
+
+| # | Rule | Detail |
+|---|---|---|
+| 1 | **Implied-return signal** | Signal = (Predicted Close − Today's Close) ÷ Today's Close × 100. Measures the *magnitude* of the expected move, not just direction. |
+| 2 | **Dead-zone threshold** | Only trade when the implied return magnitude exceeds **{sim_threshold_pct:.1f}%**. Signals weaker than this keep the current position unchanged, eliminating low-conviction whipsaw trades. Adjust in *Simulation Settings*. |
+| 3 | **Proportional position sizing** | A BUY deploys a fraction of available cash proportional to signal strength: 0% at the threshold → 100% at **{full_conviction_display:.1f}%** move. Weak signals get a small position; strong signals go all-in. |
+| 4 | **Transaction costs** | Every execution is adjusted by **{sim_cost_pct:.2f}%** per side (commission + bid-ask spread). Adjust in *Simulation Settings*. |
+| 5 | **Regime filter** | If a SELL signal fires while the stock is **above its 200-day moving average** (uptrend), the signal is suppressed to HOLD. This prevents exiting winning long-term positions on short-term noise. |
+
+**Portfolio is marked-to-market at the actual close {forecast_days} day(s) after each signal date.**
+Capital of ${initial_cash_total:,.0f} is split equally across selected stocks.
+                """)
+
+            # ── Current signal: what to do NOW ───────────────────
+            st.markdown("### 🎯 Current Signal — What to Do Now")
+            rec_stocks = [
+                s for s in selected_stocks
+                if s in forecast_results and "error" not in forecast_results.get(s, {})
+            ]
+            if rec_stocks:
+                rec_cols = st.columns(len(rec_stocks))
+                for rec_col, sym in zip(rec_cols, rec_stocks):
+                    with rec_col:
+                        fc = forecast_results[sym]
+                        last_price = fc.get("last_price", 0.0)
+                        pred_price = fc.get("predictions", {}).get(1, last_price)
+                        implied_return_pct = (
+                            (pred_price - last_price) / last_price * 100
+                            if last_price > 0 else 0.0
+                        )
+
+                        # Base signal
+                        if implied_return_pct > sim_threshold_pct:
+                            raw_signal = "BUY"
+                        elif implied_return_pct < -sim_threshold_pct:
+                            raw_signal = "SELL"
+                        else:
+                            raw_signal = "HOLD"
+
+                        # Regime check (200-day MA)
+                        in_uptrend = False
+                        regime_label = "—"
+                        if sym in stock_data:
+                            closes = _get_daily_close_series(stock_data[sym])
+                            if len(closes) >= 100:
+                                ma_200 = closes.rolling(200, min_periods=100).mean()
+                                in_uptrend = float(closes.iloc[-1]) > float(ma_200.iloc[-1])
+                                regime_label = "Uptrend ↑" if in_uptrend else "Downtrend ↓"
+
+                        # Apply regime filter
+                        regime_note = ""
+                        final_signal = raw_signal
+                        if raw_signal == "SELL" and in_uptrend:
+                            final_signal = "HOLD"
+                            regime_note = "SELL overridden by uptrend regime."
+
+                        # Confidence / suggested position size
+                        full_conviction = max(sim_threshold_pct * 3.0, 0.3)
+                        confidence = min(abs(implied_return_pct) / full_conviction, 1.0)
+
+                        # Risk rating from backtest
+                        risk = fc.get("risk_rating", "—")
+
+                        # Display
+                        st.metric(
+                            label=f"**{sym}**",
+                            value=f"${last_price:,.2f}",
+                            delta=f"{implied_return_pct:+.2f}% implied ({forecast_days}d)",
+                        )
+                        st.caption(
+                            f"Predicted: **${pred_price:,.2f}** &nbsp;|&nbsp; "
+                            f"Regime: **{regime_label}** &nbsp;|&nbsp; "
+                            f"Model confidence: **{risk}**"
+                        )
+                        if final_signal == "BUY":
+                            position_size = f"{confidence * 100:.0f}% of available cash"
+                            st.success(
+                                f"**BUY** — deploy {position_size}\n\n"
+                                f"Predicted move of {implied_return_pct:+.2f}% exceeds the "
+                                f"{sim_threshold_pct:.1f}% threshold."
+                            )
+                        elif final_signal == "SELL":
+                            st.error(
+                                f"**SELL** — liquidate full position\n\n"
+                                f"Predicted move of {implied_return_pct:+.2f}% is below "
+                                f"−{sim_threshold_pct:.1f}% threshold."
+                            )
+                        else:
+                            if regime_note:
+                                st.warning(
+                                    f"**HOLD** — keep current position\n\n"
+                                    f"{regime_note} Raw SELL signal overridden because "
+                                    f"stock is in an uptrend (above 200-day MA)."
+                                )
+                            else:
+                                st.warning(
+                                    f"**HOLD** — keep current position\n\n"
+                                    f"Implied return {implied_return_pct:+.2f}% is within "
+                                    f"the ±{sim_threshold_pct:.1f}% dead zone — "
+                                    f"signal too weak to act on."
+                                )
+            else:
+                st.info("No forecast results available to generate recommendations.")
+
+            st.divider()
             valid_sim_stocks = [
                 s for s in selected_stocks
                 if s in sim_results and sim_results[s] is not None
@@ -706,6 +857,7 @@ def main():
                             )
                     total_final += res.final_value
                     total_buy_hold += res.initial_cash * (1 + buy_hold_pct / 100)
+                    total_signals = res.n_buys + res.n_sells + res.n_holds
                     sim_rows.append({
                         "Stock": sym,
                         "Start Price": f"${start_price_display:,.2f}",
@@ -716,6 +868,8 @@ def main():
                         "Buy & Hold (%)": f"{buy_hold_pct:+.1f}%",
                         "Buys": res.n_buys,
                         "Sells": res.n_sells,
+                        "Holds": res.n_holds,
+                        "Costs ($)": f"${res.total_cost_paid:,.0f}",
                     })
                 sim_rows.append({
                     "Stock": "**Total**",
@@ -727,6 +881,8 @@ def main():
                     "Buy & Hold (%)": f"{(total_buy_hold - initial_cash_total) / initial_cash_total * 100:+.1f}%",
                     "Buys": "—",
                     "Sells": "—",
+                    "Holds": "—",
+                    "Costs ($)": f"${sum(sim_results[s].total_cost_paid for s in valid_sim_stocks):,.0f}",
                 })
                 st.dataframe(
                     pd.DataFrame(sim_rows),

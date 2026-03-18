@@ -7,7 +7,7 @@ A comprehensive stock forecasting system with machine learning models for analyz
 - **Streamlit UI**: Interactive app for stock selection, forecasting, backtesting, and trading simulation
 - **S&P 100 + Market Indices**: Select from 100+ stocks and ETFs (SPY, QQQ, DIA, etc.)
 - **LGBM 2-Stage**: Prophet or MA trend/seasonality + LightGBM; daily (≤5 days) and weekly horizon with volatility features
-- **Trading Simulation**: $100k simulation with forecast-based buy/sell, transaction fees
+- **Trading Simulation**: $100k simulation with 5 research-driven enhancements — implied-return signal, dead-zone threshold, proportional position sizing, transaction cost model, and 200-day MA regime filter; user-adjustable parameters
 - **Capital Market Research**: News sentiment (FinBERT or keyword), SEC filings (10-K, 10-Q, 8-K), impact features; optional LGBM input via sidebar checkbox
 - **Feature Importance**: Gain-based and SHAP (optional) for directional analysis
 - **Data Download**: Yahoo Finance API, configurable via YAML
@@ -149,6 +149,24 @@ The notebook provides comprehensive visualizations including:
 - Correlation analysis
 - Recent performance trends
 
+## Trading Simulation Strategy
+
+The simulation applies five research-driven rules on top of the LGBM forecast:
+
+| # | Rule | Description |
+|---|---|---|
+| 1 | **Implied-return signal** | Signal = (Predicted Close − Close[T]) ÷ Close[T] × 100. Measures expected move magnitude in %, not just raw direction. |
+| 2 | **Dead-zone threshold** | Only trade when the implied return exceeds a configurable threshold (default **0.5%**). Signals inside the dead zone keep the current position, eliminating low-conviction whipsaw trades. |
+| 3 | **Proportional position sizing** | BUY deploys a fraction of available cash proportional to signal strength (0% at threshold → 100% at 3× threshold). Weak signals get small positions; strong signals go all-in. |
+| 4 | **Transaction cost model** | Every execution is adjusted by a configurable cost per side (default **0.1%**, representing commissions + bid-ask spread). |
+| 5 | **Regime filter** | SELL signals are suppressed to HOLD when the stock is above its 200-day MA, preventing premature exits during sustained uptrends. |
+
+Threshold and transaction cost are adjustable via the **Simulation Settings** expander in the sidebar.
+The **Simulation tab** shows a live "What to Do Now" recommendation for each selected stock using the same logic as the backtest engine.
+The **Forecast Summary** sidebar shows each stock's predicted price and expected % change, colour-coded green (up) / red (down).
+
+Additionally, backtesting uses **non-overlapping windows** — the backtest steps forward by the full forecast horizon so consecutive signals don't share target days, producing clean, independent period results.
+
 ## Configuration
 
 Edit `config/stocks_config.yaml` to customize:
@@ -192,7 +210,7 @@ This will:
 2. Validate and clean the data
 3. Calculate technical indicators
 4. Create machine learning features
-5. Save processed data to `/Users/stephenzhang/Downloads/stock_data`
+5. Save processed data to `data/` (or the path set by `STOCK_DATA_DIR`)
 6. Generate summary statistics
 
 ### Advanced Usage
