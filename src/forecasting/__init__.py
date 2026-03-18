@@ -35,6 +35,10 @@ from src.forecasting.trading_simulator import (
     run_multi_stock_simulation,
     SimulationResult,
 )
+from src.forecasting.trend_seasonality import (
+    add_trend_seasonality_features,
+    get_forecast_trend_seasonality,
+)
 
 __all__ = [
     'WeeklyAggregator',
@@ -46,4 +50,6 @@ __all__ = [
     'run_simulation',
     'run_multi_stock_simulation',
     'SimulationResult',
+    'add_trend_seasonality_features',
+    'get_forecast_trend_seasonality',
 ]
