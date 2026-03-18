@@ -174,7 +174,9 @@ def run_backtest(
                 min_rows, train_cap, train_floor = 100, 300, 100
             else:
                 features = create_long_features(daily)
-                min_rows, train_cap, train_floor = 200, 400, 150
+                # min_rows=100 reflects the 200-day MA min_periods=100 warm-up;
+                # train_floor is overridden adaptively below after we know n_rows.
+                min_rows, train_cap, train_floor = 100, 400, 100
 
             data = create_daily_targets(features, forecast_days)
             target_col = f"target_{forecast_days}d"
@@ -193,6 +195,11 @@ def run_backtest(
                     data = append_research_features_to_data(data, symbol, research_feats)
                 except Exception:
                     pass  # Fall back to price-only features if research fails
+
+            # For long horizons with limited data, adapt train_floor to n_rows
+            # so initial_train doesn't exceed available rows.
+            if forecast_days > 15:
+                train_floor = max(80, int(n_rows * 0.60))
 
             initial_train = min(train_cap, max(train_floor, n_rows - forecast_days * 2))
             min_train = min(train_floor, max(train_floor // 3, n_rows // 5))
@@ -288,7 +295,9 @@ def run_forecast(
                 min_rows = 100
             else:
                 features = create_long_features(daily)
-                min_rows = 200
+                # 100 matches the 200-day MA min_periods=100 warm-up; forecasting
+                # does not need a fixed 200-row minimum like the backtester does.
+                min_rows = 100
 
             data = create_daily_targets(features, forecast_days)
             target_col = f"target_{forecast_days}d"
