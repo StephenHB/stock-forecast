@@ -56,6 +56,19 @@ When forecast horizon <= 5 days, the app now uses:
 
 **Optional:** `pip install stock-forecast[prophet]` for Prophet; `pip install stock-forecast[finbert]` for FinBERT. Research features use yfinance; on some systems this can cause crashes—use checkbox only if stable.
 
+## Long/Short-Term Horizon-Aware Features (long-short-term-forecasting)
+
+- [x] Create branch `long-short-term-forecasting`
+- [x] Audit existing feature pipeline: binary `use_daily` split — short (≤5d) uses daily features, everything else uses weekly-aggregated features (lossy for 15–30d)
+- [x] Create `src/feature_engineering/horizon_features.py` with two new feature sets:
+  - `add_medium_term_features` (6–15d): extended lags (10, 15d), longer MA/std (50d), RSI(14/21), MACD(12,26,9), Bollinger Band position, ATR(14)%, Stochastic %K(14), CCI(20), OBV-normalised, 15d momentum
+  - `add_long_term_features` (16–30d): all medium features + lags (20, 30d), MA(100d), 50/200-day MA ratio & regime flag, 52-week high/low distance, 20/30/60d momentum, cyclic month/quarter encoding, volatility-regime ratio
+- [x] Add `create_medium_features` and `create_long_features` to `src/forecasting/feature_factory.py`
+- [x] Export new functions from `src/feature_engineering/__init__.py`
+- [x] Replace binary `use_daily` flag in `app.py` `run_backtest` and `run_forecast` with three-tier horizon logic (Short 1–5d / Medium 6–15d / Long 16–30d), all on daily OHLCV data
+- [x] Smoke-tested: 5d → 30 features / 476 rows; 10d → 41 features / 466 rows; 30d → 60 features / 371 rows
+- [ ] PR: Merge `long-short-term-forecasting` → `main`
+
 ## Expand Stock Universe to S&P 500 (feature/sp500-stocks)
 
 - [x] Create branch `feature/sp500-stocks`

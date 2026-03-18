@@ -29,6 +29,8 @@ from src.forecasting import (
 from src.research import CapitalMarketResearcher
 from src.forecasting.feature_factory import (
     create_daily_features,
+    create_medium_features,
+    create_long_features,
     create_weekly_features,
     create_daily_targets,
     create_weekly_targets,
@@ -142,17 +144,14 @@ def run_backtest(
     forecast_days: int,
     include_research_features: bool = False,
 ) -> dict:
-    """Run backtesting. Uses daily data + volatility features when horizon <= 5 days."""
-    use_daily = forecast_days <= 5
-    weekly_aggregator = (
-        WeeklyAggregator(
-            price_columns=["Open", "High", "Low", "Close"],
-            volume_columns=["Volume"],
-        )
-        if not use_daily
-        else None
-    )
+    """
+    Run backtesting with horizon-aware features.
 
+    Three feature tiers, all using daily OHLCV data:
+      Short   (1–5d)  : microstructure volatility + short lags
+      Medium  (6–15d) : technical indicators (RSI, MACD, BB, ATR, CCI) + momentum
+      Long   (16–30d) : regime (MA200), 52-week levels, cyclic calendar + vol-regime
+    """
     results = {}
     for symbol, daily_df in stock_data.items():
         try:
@@ -166,25 +165,24 @@ def run_backtest(
             cols = {c: c.replace(" ", "_") for c in daily.columns if " " in c}
             daily = daily.rename(columns=cols)
 
-            if use_daily:
+            # Select feature tier based on forecast horizon
+            if forecast_days <= 5:
                 features = create_daily_features(daily)
-                data = create_daily_targets(features, forecast_days)
-                target_col = f"target_{forecast_days}d"
-                returns = daily["Close"].pct_change().dropna()
-                periods = 252
+                min_rows, train_cap, train_floor = 60, 260, 60
+            elif forecast_days <= 15:
+                features = create_medium_features(daily)
+                min_rows, train_cap, train_floor = 100, 300, 100
             else:
-                weekly = weekly_aggregator.aggregate(daily)
-                features = create_weekly_features(weekly)
-                data = create_weekly_targets(features, forecast_horizon_weeks)
-                target_col = f"target_{forecast_horizon_weeks}w"
-                initial_train = 13
-                min_train = 6
-                returns = weekly["Close"].pct_change().dropna()
-                periods = 52
+                features = create_long_features(daily)
+                min_rows, train_cap, train_floor = 200, 400, 150
+
+            data = create_daily_targets(features, forecast_days)
+            target_col = f"target_{forecast_days}d"
+            returns = daily["Close"].pct_change().dropna()
+            periods = 252
 
             data = data.dropna()
             n_rows = len(data)
-            min_rows = 60 if use_daily else 20
             if n_rows < min_rows:
                 continue
 
@@ -196,10 +194,8 @@ def run_backtest(
                 except Exception:
                     pass  # Fall back to price-only features if research fails
 
-            # Scale daily training size for short backtests (1yr ~252 days)
-            if use_daily:
-                initial_train = min(260, max(60, n_rows - 30))
-                min_train = min(60, max(20, n_rows // 4))
+            initial_train = min(train_cap, max(train_floor, n_rows - forecast_days * 2))
+            min_train = min(train_floor, max(train_floor // 3, n_rows // 5))
 
             feature_columns = get_feature_columns(data, target_col)
 
@@ -208,12 +204,10 @@ def run_backtest(
                 test_size=1,
                 # Non-overlapping windows: step forward by the full horizon so
                 # consecutive signals don't share target days.
-                # Daily: step by forecast_days (e.g. 5-day horizon → signal every 5 days).
-                # Weekly: step by 1 week (already matches a 1-week-ahead target).
-                step_size=forecast_days if use_daily else 1,
+                step_size=forecast_days,
                 min_train_size=min_train,
                 target_column=target_col,
-                forecast_horizon=forecast_horizon_weeks if not use_daily else forecast_days,
+                forecast_horizon=forecast_days,
             )
             bt_results = backtester.backtest(data, feature_columns=feature_columns)
             metrics = bt_results["overall_metrics"]
@@ -248,19 +242,15 @@ def run_forecast(
     backtest_results: dict,
     include_research_features: bool = False,
 ) -> dict:
-    """Run forecast. Uses daily data + volatility features when horizon <= 5 days."""
+    """
+    Run forecast with horizon-aware features matching run_backtest tiers.
+
+    Short (1–5d): daily volatility features.
+    Medium (6–15d): technical indicators + momentum.
+    Long (16–30d): regime, 52-week levels, cyclic calendar.
+    """
     import lightgbm as lgb
     from sklearn.preprocessing import StandardScaler
-
-    use_daily = forecast_days <= 5
-    weekly_aggregator = (
-        WeeklyAggregator(
-            price_columns=["Open", "High", "Low", "Close"],
-            volume_columns=["Volume"],
-        )
-        if not use_daily
-        else None
-    )
 
     best_params = {
         "n_estimators": 200,
@@ -289,18 +279,21 @@ def run_forecast(
             cols = {c: c.replace(" ", "_") for c in daily.columns if " " in c}
             daily = daily.rename(columns=cols)
 
-            if use_daily:
+            # Match the same feature tier used in run_backtest
+            if forecast_days <= 5:
                 features = create_daily_features(daily)
-                data = create_daily_targets(features, forecast_days)
-                target_col = f"target_{forecast_days}d"
+                min_rows = 60
+            elif forecast_days <= 15:
+                features = create_medium_features(daily)
+                min_rows = 100
             else:
-                weekly = weekly_aggregator.aggregate(daily)
-                features = create_weekly_features(weekly)
-                data = create_weekly_targets(features, forecast_horizon_weeks)
-                target_col = f"target_{forecast_horizon_weeks}w"
+                features = create_long_features(daily)
+                min_rows = 200
+
+            data = create_daily_targets(features, forecast_days)
+            target_col = f"target_{forecast_days}d"
 
             data = data.dropna()
-            min_rows = 60 if use_daily else 20
             if len(data) < min_rows:
                 results[symbol] = {"error": "Insufficient data"}
                 continue

@@ -37,6 +37,7 @@ from .technical_indicators import TechnicalIndicators
 from .time_features import TimeFeatures
 from .difference_features import DifferenceFeatures
 from .daily_volatility_features import DailyVolatilityFeatures
+from .horizon_features import add_medium_term_features, add_long_term_features
 
 __all__ = [
     'BaseFeatureTransformer',
@@ -48,6 +49,8 @@ __all__ = [
     'TimeFeatures',
     'DifferenceFeatures',
     'DailyVolatilityFeatures',
+    'add_medium_term_features',
+    'add_long_term_features',
 ]
 
 def create_feature_pipeline(transformers):
