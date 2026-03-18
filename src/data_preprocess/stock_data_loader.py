@@ -3,6 +3,12 @@ Stock data loader module for downloading and managing stock market data.
 
 This module provides functionality to download stock data from Yahoo Finance
 with customizable configuration and data validation.
+
+Storage behaviour:
+- Local: data is saved under the path resolved by get_data_dir() (project data/
+  by default, overridable via STOCK_DATA_DIR env var).
+- Cloud (Streamlit Cloud / IS_CLOUD=true): all disk writes are skipped; the
+  caller is expected to rely on @st.cache_data or session state for caching.
 """
 
 import os
@@ -15,6 +21,8 @@ from datetime import datetime, date
 import logging
 from tqdm import tqdm
 
+from src.utils.environment import is_cloud_environment, get_data_dir
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,6 +34,9 @@ class StockDataLoader:
     
     This class provides methods to download stock data based on configuration files,
     validate the data, and save it in various formats.
+
+    On cloud environments (Streamlit Cloud or IS_CLOUD=true) the data_dir is set
+    to None and all filesystem I/O is skipped gracefully.
     """
     
     def __init__(self, config_path: Optional[str] = None, data_dir: Optional[str] = None):
@@ -34,19 +45,32 @@ class StockDataLoader:
         
         Args:
             config_path: Path to the YAML configuration file. If None, uses default config.
-            data_dir: Directory to save downloaded data. If None, uses '/Users/stephenzhang/Downloads/stock_data'.
+            data_dir: Directory to save downloaded data. If None, resolved via get_data_dir():
+                      - Cloud environments: None (no disk I/O)
+                      - Local: STOCK_DATA_DIR env var, or project-relative data/ folder.
         """
         self.config_path = config_path or self._get_default_config_path()
-        self.data_dir = Path(data_dir) if data_dir else Path('/Users/stephenzhang/Downloads/stock_data')
+
+        if data_dir is not None:
+            self.data_dir: Optional[Path] = Path(data_dir)
+        else:
+            resolved = get_data_dir()
+            self.data_dir = Path(resolved) if resolved is not None else None
+
         self.config = self._load_config()
+
+        if self.data_dir is None:
+            logger.info("Running in cloud mode — disk persistence is disabled.")
         
-        # Create data directory if it doesn't exist
+    def _ensure_dirs(self) -> bool:
+        """Create data subdirectories if needed. Returns False if on cloud (no-op)."""
+        if self.data_dir is None:
+            return False
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Create subdirectories for organized data storage
         (self.data_dir / 'raw').mkdir(exist_ok=True)
         (self.data_dir / 'processed').mkdir(exist_ok=True)
-        
+        return True
+
     def _get_default_config_path(self) -> str:
         """Get the default configuration file path."""
         return os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'stocks_config.yaml')
@@ -203,6 +227,10 @@ class StockDataLoader:
             data: Stock data DataFrame.
             subdir: Subdirectory to save data ('raw' or 'processed').
         """
+        if not self._ensure_dirs():
+            logger.warning(f"Skipping disk save for {symbol}: running in cloud mode.")
+            return
+
         storage_settings = self.config.get('storage_settings', {})
         data_format = storage_settings.get('data_format', 'csv')
         compression = storage_settings.get('compression')
@@ -231,6 +259,10 @@ class StockDataLoader:
         Args:
             stock_data: Dictionary with stock symbols as keys and DataFrames as values.
         """
+        if not self._ensure_dirs():
+            logger.warning("Skipping combined data save: running in cloud mode.")
+            return
+
         storage_settings = self.config.get('storage_settings', {})
         data_format = storage_settings.get('data_format', 'csv')
         compression = storage_settings.get('compression')
@@ -268,7 +300,18 @@ class StockDataLoader:
             
         Returns:
             DataFrame for specific symbol or dictionary of DataFrames for all symbols.
+
+        Raises:
+            FileNotFoundError: If running in cloud mode (no persistent filesystem) or if
+                               the data file does not exist locally.
         """
+        if self.data_dir is None:
+            raise FileNotFoundError(
+                "Disk persistence is not available in cloud mode. "
+                "Download data fresh using download_stock_data() and rely on "
+                "@st.cache_data for in-session caching."
+            )
+
         storage_settings = self.config.get('storage_settings', {})
         data_format = storage_settings.get('data_format', 'csv')
         
