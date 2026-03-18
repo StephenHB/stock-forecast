@@ -157,8 +157,11 @@ def run_backtest(
         try:
             daily = daily_df.copy()
             if "Date" in daily.columns:
-                daily["Date"] = pd.to_datetime(daily["Date"], utc=True).dt.tz_localize(None)
+                _dt = pd.to_datetime(daily["Date"])
+                daily["Date"] = _dt.dt.tz_convert(None) if _dt.dt.tz is not None else _dt
                 daily.set_index("Date", inplace=True)
+            elif isinstance(daily.index, pd.DatetimeIndex) and daily.index.tz is not None:
+                daily.index = daily.index.tz_convert(None)
             cols = {c: c.replace(" ", "_") for c in daily.columns if " " in c}
             daily = daily.rename(columns=cols)
 
@@ -277,8 +280,11 @@ def run_forecast(
         try:
             daily = daily_df.copy()
             if "Date" in daily.columns:
-                daily["Date"] = pd.to_datetime(daily["Date"], utc=True).dt.tz_localize(None)
+                _dt = pd.to_datetime(daily["Date"])
+                daily["Date"] = _dt.dt.tz_convert(None) if _dt.dt.tz is not None else _dt
                 daily.set_index("Date", inplace=True)
+            elif isinstance(daily.index, pd.DatetimeIndex) and daily.index.tz is not None:
+                daily.index = daily.index.tz_convert(None)
             cols = {c: c.replace(" ", "_") for c in daily.columns if " " in c}
             daily = daily.rename(columns=cols)
 

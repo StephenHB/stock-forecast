@@ -67,9 +67,14 @@ def _compute_regime_filter(price_series: pd.Series) -> pd.Series:
 
     Uses min_periods=100 so partial history still produces a signal.
     Only suppresses SELL signals — BUY signals are never filtered out.
+
+    Converts to plain float64 first to avoid pandas 2.x nullable-dtype NA
+    propagation, then fills any remaining NaN with False so bool() never
+    raises "boolean value of NA is ambiguous".
     """
-    ma_200 = price_series.rolling(200, min_periods=100).mean()
-    return price_series > ma_200
+    ps = price_series.astype(float)
+    ma_200 = ps.rolling(200, min_periods=100).mean()
+    return (ps > ma_200).fillna(False)
 
 
 def run_simulation(
@@ -116,6 +121,19 @@ def run_simulation(
     if n == 0 or len(predictions) != n or len(actuals) != n:
         raise ValueError("predictions, actuals, and dates must have same length")
 
+    # Ensure price_series has a tz-naive index so comparisons with dates work
+    # regardless of what yfinance / pandas version returned.
+    if isinstance(price_series.index, pd.DatetimeIndex) and price_series.index.tz is not None:
+        price_series = price_series.copy()
+        price_series.index = price_series.index.tz_convert(None)
+
+    # Normalise dates to tz-naive pd.Timestamp to match price_series index.
+    dates = [
+        pd.Timestamp(d).tz_localize(None) if pd.Timestamp(d).tzinfo is not None
+        else pd.Timestamp(d)
+        for d in dates
+    ]
+
     signal_closes = _get_signal_closes(dates, price_series)
     uptrend = _compute_regime_filter(price_series)
 
@@ -152,7 +170,11 @@ def run_simulation(
         if action == "SELL":
             d = dates[i]
             on_or_before_regime = uptrend[uptrend.index <= d]
-            in_uptrend = bool(on_or_before_regime.iloc[-1]) if len(on_or_before_regime) > 0 else False
+            if len(on_or_before_regime) > 0:
+                _val = on_or_before_regime.iloc[-1]
+                in_uptrend = bool(_val) if pd.notna(_val) else False
+            else:
+                in_uptrend = False
             if in_uptrend:
                 action = "HOLD"
 
