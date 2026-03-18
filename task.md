@@ -55,3 +55,25 @@ When forecast horizon <= 5 days, the app now uses:
 - [ ] PR: Merge `feat/lgbm-2stage` → `main`
 
 **Optional:** `pip install stock-forecast[prophet]` for Prophet; `pip install stock-forecast[finbert]` for FinBERT. Research features use yfinance; on some systems this can cause crashes—use checkbox only if stable.
+
+## Trading Simulation Strategy Review (review-trading-simulation-strategy)
+
+- [x] Create branch `review-trading-simulation-strategy`
+- [x] Audit existing buy/sell logic: identified 3 bugs (wrong signal reference price, overlapping forecast windows, signal vs execution price mismatch)
+- [x] Fix 1: Signal reference — use Close[T] (not Close[T-1]) as reference price in `trading_simulator.py`
+- [x] Fix 2: Non-overlapping windows — set `step_size=forecast_days` in `app.py` `run_backtest` for daily mode
+- [x] Fix 3: Update simulation tab caption to accurately describe corrected logic
+- [x] Research agent investigation: identified 5 root causes why ML forecast strategy struggles vs buy-and-hold (level prediction, equity drift, all-in/all-out whipsaw, no threshold, no costs, no regime awareness)
+- [x] Enhancement 1: Implied-return signal — derive `(pred − Close[T]) / Close[T]` as the signal magnitude
+- [x] Enhancement 2: Dead-zone threshold — configurable parameter (default 0.5%), HOLD inside dead zone
+- [x] Enhancement 3: Proportional position sizing — BUY allocates confidence% of cash (scales threshold → 3× threshold)
+- [x] Enhancement 4: Transaction cost model — configurable per-side cost (default 0.1%)
+- [x] Enhancement 5: 200-day MA regime filter — suppress SELL signals during uptrend
+- [x] UI: Add "Simulation Settings" expander with threshold and transaction cost sliders
+- [x] UI: Add "How This Strategy Works" expander in Simulation tab with 5-rule table
+- [x] UI: Add "What to Do Now" live recommendation cards (BUY / SELL / HOLD) per stock
+- [x] UI: Rename sidebar "Backtest Summary" → "Forecast Summary"; show predicted price + % change (colour-coded)
+- [x] UI: Add Holds and Costs columns to simulation results table
+- [x] Docs: Update README with Trading Simulation Strategy section and 5-rule table
+- [x] Docs: Update task.md with this task log
+- [ ] PR: Merge `review-trading-simulation-strategy` → `main`
