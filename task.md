@@ -37,6 +37,6 @@ When forecast horizon <= 5 days, the app now uses:
 - [x] Add SEC filings (10-K, 10-Q, 8-K) via yfinance
 - [x] Add feature importance (gain, SHAP, permutation)
 - [x] Document research findings in `docs/research/MODEL_ENHANCEMENT_RESEARCH.md`
-- [ ] PR: Merge `feat/model-enhancement-research` → `main`
+- [x] PR: Merge `feat/model-enhancement-research` → `main`
 
 **Note:** Capital Market Research expander uses yfinance; expanding it may cause connection issues on some systems. Research features are UI-only; pipeline integration (`research_features.py`) is optional and not enabled by default.
