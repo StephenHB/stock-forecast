@@ -41,6 +41,7 @@ from src.forecasting.research_features import (
     append_research_features_to_data,
 )
 from src.feature_engineering.market_features import download_market_reference_data
+from src.forecasting.lgbm_tuner import tune_lgbm_params, build_lag_back_splits, DEFAULT_PARAMS
 
 # Page config
 st.set_page_config(page_title="Stock Forecast", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
@@ -255,6 +256,11 @@ def run_backtest(
                 min_train_size=min_train,
                 target_column=target_col,
                 forecast_horizon=forecast_days,
+                # Adaptive tuning: at each window the 1-lag-back split
+                # (the forecast_horizon rows before the test window) is used
+                # as the validation set for a fast random hyperparameter search.
+                tune_hyperparams=True,
+                n_tune_iter=20,
             )
             bt_results = backtester.backtest(data, feature_columns=feature_columns)
             metrics = bt_results["overall_metrics"]
@@ -300,18 +306,6 @@ def run_forecast(
     import lightgbm as lgb
     from sklearn.preprocessing import StandardScaler
 
-    best_params = {
-        "n_estimators": 200,
-        "max_depth": 5,
-        "learning_rate": 0.1,
-        "num_leaves": 31,
-        "subsample": 0.9,
-        "colsample_bytree": 0.9,
-        "reg_alpha": 0.1,
-        "reg_lambda": 0.1,
-        "random_state": 42,
-        "verbose": -1,
-    }
     scaler = StandardScaler()
 
     results = {}
@@ -361,10 +355,21 @@ def run_forecast(
 
             feature_columns = get_feature_columns(data, target_col)
 
-            X = data[feature_columns]
-            y = data[target_col]
+            X = data[feature_columns].values
+            y = data[target_col].values
             X_scaled = scaler.fit_transform(X)
-            model = lgb.LGBMRegressor(**best_params)
+
+            # ── Adaptive hyperparameter tuning (1-lag-back window) ──────────
+            # The forecast_horizon rows immediately before the current unknown
+            # window act as the validation set. Tuning on recent data picks
+            # params that suit the current market regime.
+            forecast_params = DEFAULT_PARAMS.copy()
+            splits = build_lag_back_splits(X_scaled, y, forecast_days)
+            if splits is not None:
+                Xtt, ytt, Xtv, ytv = splits
+                forecast_params = tune_lgbm_params(Xtt, ytt, Xtv, ytv, n_iter=20)
+
+            model = lgb.LGBMRegressor(**forecast_params)
             model.fit(X_scaled, y)
 
             # Use the most recent row from `features` (before target was appended)

@@ -91,6 +91,20 @@ When forecast horizon <= 5 days, the app now uses:
 - [x] Updated task.md with this task log
 - [ ] PR: Merge `feature/sp500-stocks` → `main`
 
+## Adaptive Hyperparameter Tuning (model-tuning)
+
+- [x] Create branch `model-tuning`
+- [x] Create `src/forecasting/lgbm_tuner.py`:
+  - `PARAM_GRID`: 5 LGBM params (`max_depth`, `learning_rate`, `num_leaves`, `subsample`, `colsample_bytree`); `n_estimators` fixed at 200 for fast evaluation
+  - `tune_lgbm_params(X_tune_train, y, X_tune_val, y, n_iter=20)`: random search, returns best param dict; falls back to `DEFAULT_PARAMS` if data too small
+  - `build_lag_back_splits(X, y, forecast_horizon)`: slices the 1-lag-back validation window — val = rows `[-2H:-H]`, train = rows `[:-2H]`; returns `None` if `n < 3H`
+- [x] Update `StandaloneBacktester`:
+  - New params: `tune_hyperparams=False`, `n_tune_iter=20`
+  - At each rolling window: calls `build_lag_back_splits` on the training block, then `tune_lgbm_params`; falls back to defaults when splits are too small
+  - Records `params_used` in each window result
+- [x] Update `run_backtest` in `app.py`: pass `tune_hyperparams=True, n_tune_iter=20` to `StandaloneBacktester`
+- [x] Update `run_forecast` in `app.py`: replace fixed `best_params` dict with adaptive tuning via `build_lag_back_splits` + `tune_lgbm_params`; falls back to `DEFAULT_PARAMS` when data is too small for a 3-split
+
 ## Trading Simulation Strategy Review (review-trading-simulation-strategy)
 
 - [x] Create branch `review-trading-simulation-strategy`
