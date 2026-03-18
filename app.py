@@ -151,16 +151,23 @@ def _impute_features(df: pd.DataFrame) -> pd.DataFrame:
     intraday lags, FOMC edge cases) so they don't silently drop training rows
     or produce NA predictions.
 
-    Strategy (time-series safe — no lookahead):
-      1. Forward-fill: propagate the last known value forward in time.
-      2. Median-fill: fill any remaining NaN (e.g. the very first rows that
-         have no prior value to forward-fill from) with column medians.
+    Strategy (time-series safe — no lookahead for forward-fill direction):
+      1. Forward-fill: use the latest available value going forward in time.
+         Handles market features whose data isn't yet published for today.
+      2. Backward-fill: for the very first rows that have no prior value to
+         forward-fill from, use the earliest available value (no lookahead
+         risk here since these rows precede the model's training window).
+      3. Zero-fill: absolute last resort for columns that are entirely NaN
+         (e.g. reference ticker download failed for this date range).
     """
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     result = df.copy()
-    result[numeric_cols] = result[numeric_cols].ffill()
-    medians = result[numeric_cols].median()
-    result[numeric_cols] = result[numeric_cols].fillna(medians)
+    result[numeric_cols] = (
+        result[numeric_cols]
+        .ffill()   # latest available value forward
+        .bfill()   # earliest available value backward for leading NaN
+        .fillna(0) # final fallback if entire column is NaN
+    )
     return result
 
 
@@ -371,10 +378,10 @@ def run_forecast(
             # always receives a complete feature vector.
             last_row = features[feature_columns].iloc[-1:].copy()
             if last_row.isnull().any().any():
-                col_medians = data[feature_columns].median()
-                last_row = last_row.fillna(col_medians)
-            if last_row.isnull().any().any():
-                last_row = last_row.fillna(0.0)
+                # Fill with the last known value from the training window,
+                # then fall back to 0 for any column that is entirely missing.
+                last_known = features[feature_columns].ffill().iloc[-1]
+                last_row = last_row.fillna(last_known).fillna(0.0)
             X_pred = scaler.transform(last_row)
             pred_price = float(model.predict(X_pred)[0])
             last_price = float(daily["Close"].iloc[-1])

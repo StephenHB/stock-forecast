@@ -111,14 +111,25 @@ def add_market_features(
         return data
 
     f = data.copy()
+    # Floor both indexes to day-level so they match regardless of the
+    # time-of-day offset that tz_convert(None) leaves on the timestamps
+    # (e.g. NYSE data lands at 05:00:00 UTC after stripping the ET offset).
     stock_idx = pd.DatetimeIndex(f.index).floor("D")
     sym_upper = symbol.upper()
 
     def _align(series: pd.Series) -> pd.Series:
-        """Reindex to the stock's DatetimeIndex with forward-fill."""
+        """
+        Reindex the reference series to the stock's calendar, forward-filling
+        gaps (holidays / missing market days).  The returned Series carries
+        the stock DataFrame's *original* index so that column assignment
+        doesn't introduce NaN from an index mismatch.
+        """
         s = series.copy()
         s.index = pd.DatetimeIndex(s.index).floor("D")
-        return s.reindex(stock_idx, method="ffill")
+        aligned = s.reindex(stock_idx, method="ffill")
+        # Re-attach the original (possibly sub-day) index so that
+        # `f["col"] = aligned` aligns by position, not by timestamp.
+        return pd.Series(aligned.values, index=f.index, name=series.name)
 
     # ── SPY ───────────────────────────────────────────────────────────────────
     if "spy" in market_data and sym_upper not in _SPY_ALIASES:
