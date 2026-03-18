@@ -19,6 +19,7 @@ A comprehensive stock forecasting system with machine learning models for analyz
 ```
 stock-forecast/
 ├── app.py                        # Streamlit UI (forecast, backtest, simulation)
+├── requirements.txt              # Dependencies for Streamlit Community Cloud
 ├── src/
 │   ├── data_preprocess/          # Data loading, validation, cleaning
 │   │   ├── stock_data_loader.py
@@ -63,6 +64,14 @@ streamlit run app.py
 ```
 
 Interactive UI for stock selection, forecast horizon (n days), and backtesting (default: 2 years).
+
+### Deploy to Streamlit Community Cloud
+
+1. Push your repo to GitHub
+2. Go to [share.streamlit.io](https://share.streamlit.io)
+3. Sign in with GitHub and click **Deploy an app**
+4. Select repo `StephenHB/stock-forecast`, branch `main`, main file `app.py`
+5. Click **Deploy** — dependencies install from `requirements.txt`
 
 ## Quick Start
 
