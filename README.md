@@ -6,9 +6,9 @@ A comprehensive stock forecasting system with machine learning models for analyz
 
 - **Streamlit UI**: Interactive app for stock selection, forecasting, backtesting, and trading simulation
 - **S&P 100 + Market Indices**: Select from 100+ stocks and ETFs (SPY, QQQ, DIA, etc.)
-- **LightGBM Forecasting**: Daily (≤5 days) and weekly horizon with volatility features
+- **LGBM 2-Stage**: Prophet or MA trend/seasonality + LightGBM; daily (≤5 days) and weekly horizon with volatility features
 - **Trading Simulation**: $100k simulation with forecast-based buy/sell, transaction fees
-- **Capital Market Research**: News sentiment, SEC filings (10-K, 10-Q, 8-K), impact features
+- **Capital Market Research**: News sentiment (FinBERT or keyword), SEC filings (10-K, 10-Q, 8-K), impact features; optional LGBM input via sidebar checkbox
 - **Feature Importance**: Gain-based and SHAP (optional) for directional analysis
 - **Data Download**: Yahoo Finance API, configurable via YAML
 - **Data Preprocessing**: Validate, clean, technical indicators (RSI, MACD, Bollinger Bands)
@@ -24,7 +24,8 @@ stock-forecast/
 │   │   ├── stock_data_loader.py
 │   │   └── data_preprocess_utils.py
 │   ├── forecasting/              # LightGBM, backtesting, simulation
-│   │   ├── feature_factory.py    # Daily/weekly features
+│   │   ├── feature_factory.py    # Daily/weekly features + trend/seasonality
+│   │   ├── trend_seasonality.py  # Prophet or MA for LGBM 2-stage
 │   │   ├── standalone_backtester.py
 │   │   ├── trading_simulator.py
 │   │   ├── feature_importance.py  # SHAP, permutation importance
@@ -216,9 +217,11 @@ Key dependencies:
 - `streamlit`: Interactive UI
 - `pyyaml`: Configuration
 
-Optional (for research):
-- `shap`: Feature importance (directional)
-- `duckduckgo-search`: Research agent search
+Optional extras:
+- `pip install stock-forecast[prophet]` — Prophet trend/seasonality (else MA fallback)
+- `pip install stock-forecast[finbert]` — FinBERT news sentiment (else keyword)
+- `pip install stock-forecast[research_ml]` — SHAP feature importance
+- `pip install stock-forecast[research]` — duckduckgo-search for research agent
 
 ## AI Agent Setup
 

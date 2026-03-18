@@ -32,7 +32,9 @@ Build interactive UIs that let users:
 |   100 + indices) | Simulation: Trading results, equity curves       |
 | - Forecast days  | Historical: Daily close prices                  |
 | - Backtest years | Capital Market Research (expander): News        |
-| - Run button     |   sentiment, SEC filings, impact features       |
+| - Research feat  |   sentiment, SEC filings, impact features       |
+|   checkbox       |                                                 |
+| - Run button     |                                                 |
 +------------------+------------------------------------------------+
 ```
 
@@ -41,9 +43,10 @@ Build interactive UIs that let users:
 1. **Stock selection**: `st.multiselect` with S&P 100 + market indices (SPY, QQQ, etc.)
 2. **Forecast horizon**: `st.slider` (1–30 days)
 3. **Backtest config**: Sidebar, 1–5 years
-4. **Tabs**: Overview, Backtest, Simulation, Historical
-5. **Capital Market Research** (expander): News with sentiment (🟢/🔴/⚪), SEC filings (10-K, 10-Q, 8-K) with links, short-run/long-run impact features
-6. **Results**: `st.metric`, `st.dataframe`, `st.line_chart`, `st.spinner`
+4. **Include research features**: `st.checkbox` — news, SEC, financials as LGBM input
+5. **Tabs**: Overview, Backtest, Simulation, Historical
+6. **Capital Market Research** (expander): News with sentiment (🟢/🔴/⚪), SEC filings (10-K, 10-Q, 8-K) with links, short-run/long-run impact features
+7. **Results**: `st.metric`, `st.dataframe`, `st.line_chart`, `st.spinner`
 
 ## Conventions
 

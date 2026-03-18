@@ -49,22 +49,79 @@ class ReportSummary:
     has_earnings: bool = False
 
 
+def _analyze_news_sentiment_finbert(titles: List[str]) -> Optional[List[NewsAnalysis]]:
+    """
+    Analyze sentiment using FinBERT when available.
+    Returns None if FinBERT is not installed or fails.
+    """
+    try:
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification
+        import torch
+
+        model_name = "ProsusAI/finbert"
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        model.eval()
+
+        results = []
+        for title in titles:
+            if not title or not title.strip():
+                results.append(
+                    NewsAnalysis(title="", sentiment_score=0.0, sentiment_label="neutral")
+                )
+                continue
+            inputs = tokenizer(
+                title[:512],
+                return_tensors="pt",
+                truncation=True,
+                padding=True,
+                max_length=512,
+            )
+            with torch.no_grad():
+                logits = model(**inputs).logits
+            probs = torch.softmax(logits, dim=1)
+            # FinBERT: 0=positive, 1=negative, 2=neutral
+            pos, neg, neu = probs[0].tolist()
+            score = pos - neg  # -1 to 1
+            label = "positive" if pos > neg and pos > neu else (
+                "negative" if neg > pos and neg > neu else "neutral"
+            )
+            results.append(
+                NewsAnalysis(
+                    title=title,
+                    sentiment_score=float(score),
+                    sentiment_label=label,
+                )
+            )
+        return results
+    except Exception as e:
+        logger.debug("FinBERT sentiment failed: %s", e)
+        return None
+
+
 def analyze_news_sentiment(
     titles: List[str],
     positive_words: Optional[set] = None,
     negative_words: Optional[set] = None,
+    use_finbert: bool = True,
 ) -> List[NewsAnalysis]:
     """
-    Analyze sentiment of news titles using a simple keyword-based approach.
+    Analyze sentiment of news titles. Uses FinBERT when available, else keyword-based.
 
     Args:
         titles: List of news titles
-        positive_words: Set of positive keywords (default: finance-oriented)
-        negative_words: Set of negative keywords (default: finance-oriented)
+        positive_words: Set of positive keywords (keyword fallback)
+        negative_words: Set of negative keywords (keyword fallback)
+        use_finbert: If True, try FinBERT first (requires transformers, torch)
 
     Returns:
         List of NewsAnalysis per title
     """
+    if use_finbert and titles:
+        finbert_result = _analyze_news_sentiment_finbert(titles)
+        if finbert_result is not None:
+            return finbert_result
+
     pos = positive_words or POSITIVE_WORDS
     neg = negative_words or NEGATIVE_WORDS
     results = []

@@ -13,10 +13,10 @@
 - **Capital Market Researcher** (`src/research/capital_market_researcher.py`):
   - **Short-run:** `news_count`, `news_recency_days`, `earnings_announcement_days_ago`, `last_earnings_surprise_pct`, `news_sentiment_mean`, `news_sentiment_std`, `news_positive_ratio`, `news_negative_ratio`
   - **Long-run:** `revenue_growth_yoy`, `net_income_growth_yoy`, `pe_ratio`, `profit_margin`, `avg_earnings_surprise_pct`, `financial_reports_found`
-- **News Report Analyzer** (`src/research/news_report_analyzer.py`): Keyword-based sentiment on news titles; aggregates for model features.
+- **News Report Analyzer** (`src/research/news_report_analyzer.py`): FinBERT (when installed) or keyword-based sentiment on news titles; aggregates for model features.
 - **SEC Filings**: yfinance `sec_filings` returns 10-K, 10-Q, 8-K with links; displayed in UI.
 - **UI**: Streamlit shows news with sentiment labels (🟢/🔴/⚪), SEC filings with links, impact features.
-- Research features are **displayed in the UI**; integration into forecasting pipeline is via `research_features.py` (optional).
+- Research features are **displayed in the UI** and **integrated into LGBM** via sidebar checkbox "Include research features (news, SEC, financials)".
 
 ### Literature Findings (2024–2025)
 
@@ -50,12 +50,12 @@
 
 ### Implementation Status
 
-- **Done:** News sentiment (keyword-based lexicon) → `news_sentiment_mean`, `news_positive_ratio`, etc.
+- **Done:** News sentiment (FinBERT when installed, else keyword) → `news_sentiment_mean`, `news_positive_ratio`, etc.
 - **Done:** SEC filings from yfinance (10-K, 10-Q, 8-K) with links in UI.
-- **Done:** `research_features.py` for optional pipeline integration.
+- **Done:** `research_features.py` for pipeline integration; sidebar checkbox enables research features in backtest/forecast.
 - **Done:** Feature importance (gain, SHAP, permutation) in `feature_importance.py`.
-- **Deferred:** Pipeline integration of `get_impact_features_dict()` — yfinance news/SEC can cause stability issues (exit 139) on some systems; research features remain UI-only.
-- **Future:** FinBERT or FinBERT-LSTM for richer sentiment (Phase 2–3).
+- **Caveat:** yfinance news/SEC can cause stability issues (exit 139) on some systems; use checkbox only if stable.
+- **Future:** FinBERT-LSTM or Transformer for sequence modeling (Phase 2–3).
 
 ---
 
