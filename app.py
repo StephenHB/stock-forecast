@@ -145,6 +145,25 @@ def _get_start_end_prices_from_daily(
     return start_price, end_price
 
 
+def _impute_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Impute NaN values introduced by new feature modules (market data gaps,
+    intraday lags, FOMC edge cases) so they don't silently drop training rows
+    or produce NA predictions.
+
+    Strategy (time-series safe — no lookahead):
+      1. Forward-fill: propagate the last known value forward in time.
+      2. Median-fill: fill any remaining NaN (e.g. the very first rows that
+         have no prior value to forward-fill from) with column medians.
+    """
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    result = df.copy()
+    result[numeric_cols] = result[numeric_cols].ffill()
+    medians = result[numeric_cols].median()
+    result[numeric_cols] = result[numeric_cols].fillna(medians)
+    return result
+
+
 def run_backtest(
     stock_data: dict,
     forecast_horizon_weeks: int,
@@ -187,6 +206,10 @@ def run_backtest(
                 # min_rows=100 reflects the 200-day MA min_periods=100 warm-up;
                 # train_floor is overridden adaptively below after we know n_rows.
                 min_rows, train_cap, train_floor = 100, 400, 100
+
+            # Impute NaN in new feature columns (market gaps, intraday lags)
+            # before adding the target so dropna() doesn't discard training rows.
+            features = _impute_features(features)
 
             data = create_daily_targets(features, forecast_days)
             target_col = f"target_{forecast_days}d"
@@ -310,6 +333,9 @@ def run_forecast(
                 # does not need a fixed 200-row minimum like the backtester does.
                 min_rows = 100
 
+            # Impute NaN in new feature columns before adding target.
+            features = _impute_features(features)
+
             data = create_daily_targets(features, forecast_days)
             target_col = f"target_{forecast_days}d"
 
@@ -338,11 +364,17 @@ def run_forecast(
             # so the prediction is anchored to TODAY, not to `forecast_days` ago.
             # data.iloc[-1] would be forecast_days old because dropna() removes the
             # last `forecast_days` rows whose target is still NaN (future not yet known).
-            latest = features[feature_columns].dropna()
-            if latest.empty:
-                results[symbol] = {"error": "Insufficient feature data for prediction"}
-                continue
-            last_row = latest.iloc[-1:]
+            #
+            # The most recent row may still have NaN after _impute_features if market
+            # data (SPY/VIX/yield) wasn't yet available for today's date. Fill any
+            # residual NaN with column medians from the training data so the model
+            # always receives a complete feature vector.
+            last_row = features[feature_columns].iloc[-1:].copy()
+            if last_row.isnull().any().any():
+                col_medians = data[feature_columns].median()
+                last_row = last_row.fillna(col_medians)
+            if last_row.isnull().any().any():
+                last_row = last_row.fillna(0.0)
             X_pred = scaler.transform(last_row)
             pred_price = float(model.predict(X_pred)[0])
             last_price = float(daily["Close"].iloc[-1])
