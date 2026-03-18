@@ -56,15 +56,16 @@ st.markdown("""
 
 @st.cache_data(ttl=3600)
 def load_available_stocks():
-    """Load full stock universe: S&P 100 + market indices."""
+    """Load full stock universe: S&P 500 (SP 100 + additional) + market indices."""
     config_path = Path(__file__).parent / "config" / "stocks_config.yaml"
     with open(config_path) as f:
         config = yaml.safe_load(f)
     sp100 = config.get("sp100_stocks", [])
+    sp500_extra = config.get("sp500_additional", [])
     indices = config.get("market_indices", [])
     defaults = config.get("default_stocks", DEFAULT_STOCKS)
-    # Combine: defaults first (quick picks), then indices, then full S&P 100
-    combined = list(dict.fromkeys(defaults + indices + sp100))
+    # Combine: defaults first (quick picks), then indices, then full S&P 500
+    combined = list(dict.fromkeys(defaults + indices + sp100 + sp500_extra))
     return combined
 
 
@@ -363,7 +364,7 @@ def main():
             "Select stocks",
             options=available_stocks,
             default=["AAPL", "GOOGL", "NVDA"],
-            help="S&P 100 stocks + market indices (SPY, QQQ, etc.). Type to search.",
+            help="S&P 500 stocks + market indices (SPY, QQQ, etc.). Type to search.",
         )
         forecast_days = st.slider(
             "Forecast horizon (days)",
