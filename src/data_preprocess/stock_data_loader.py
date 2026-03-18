@@ -190,33 +190,39 @@ class StockDataLoader:
         Returns:
             DataFrame with stock data or None if download failed.
         """
-        try:
-            ticker = yf.Ticker(symbol)
-            data = ticker.history(
-                start=start_date,
-                end=end_date,
-                interval=interval,
-                auto_adjust=self.config.get('download_settings', {}).get('auto_adjust', True),
-                prepost=self.config.get('download_settings', {}).get('prepost', False)
-            )
-            
-            if data.empty:
-                return None
-            
-            # Add stock symbol as a column
-            data['Symbol'] = symbol
-            
-            # Reset index to make Date a column
-            data = data.reset_index()
-            
-            # Rename columns to standard format
-            data.columns = data.columns.str.replace(' ', '_')
-            
-            return data
-            
-        except Exception as e:
-            logger.error(f"Error downloading data for {symbol}: {e}")
-            return None
+        import time
+        max_retries = 3
+        backoff = 2  # seconds; doubles after each failure
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                ticker = yf.Ticker(symbol)
+                data = ticker.history(
+                    start=start_date,
+                    end=end_date,
+                    interval=interval,
+                    auto_adjust=self.config.get('download_settings', {}).get('auto_adjust', True),
+                    prepost=self.config.get('download_settings', {}).get('prepost', False)
+                )
+
+                if data.empty:
+                    return None
+
+                data['Symbol'] = symbol
+                data = data.reset_index()
+                data.columns = data.columns.str.replace(' ', '_')
+                return data
+
+            except Exception as e:
+                logger.warning(
+                    f"Attempt {attempt}/{max_retries} failed for {symbol}: {e}"
+                )
+                if attempt < max_retries:
+                    time.sleep(backoff)
+                    backoff *= 2
+                else:
+                    logger.error(f"Error downloading data for {symbol}: {e}")
+                    return None
     
     def _save_stock_data(self, symbol: str, data: pd.DataFrame, subdir: str) -> None:
         """

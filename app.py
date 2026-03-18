@@ -7,6 +7,7 @@ Interactive UI for:
 - Viewing backtesting results (sidebar, default 2 years)
 """
 
+import warnings
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -259,8 +260,11 @@ def run_backtest(
                 # Adaptive tuning: at each window the 1-lag-back split
                 # (the forecast_horizon rows before the test window) is used
                 # as the validation set for a fast random hyperparameter search.
+                # tune_every_n=5 — re-tune only every 5th window and reuse
+                # cached params in between (major speed win with minimal loss).
                 tune_hyperparams=True,
-                n_tune_iter=20,
+                n_tune_iter=10,
+                tune_every_n=7,
             )
             bt_results = backtester.backtest(data, feature_columns=feature_columns)
             metrics = bt_results["overall_metrics"]
@@ -367,10 +371,23 @@ def run_forecast(
             splits = build_lag_back_splits(X_scaled, y, forecast_days)
             if splits is not None:
                 Xtt, ytt, Xtv, ytv = splits
-                forecast_params = tune_lgbm_params(Xtt, ytt, Xtv, ytv, n_iter=20)
+                forecast_params = tune_lgbm_params(Xtt, ytt, Xtv, ytv, n_iter=10)
 
-            model = lgb.LGBMRegressor(**forecast_params)
-            model.fit(X_scaled, y)
+            # Suppress LightGBM 4.x / sklearn compatibility noise (auto-assigned
+            # feature names on numpy fit trigger warnings on every predict call).
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="X does not have valid feature names",
+                    category=UserWarning,
+                )
+                warnings.filterwarnings(
+                    "ignore",
+                    message="X has feature names",
+                    category=UserWarning,
+                )
+                model = lgb.LGBMRegressor(**forecast_params)
+                model.fit(X_scaled, y)
 
             # Use the most recent row from `features` (before target was appended)
             # so the prediction is anchored to TODAY, not to `forecast_days` ago.
@@ -387,8 +404,14 @@ def run_forecast(
                 # then fall back to 0 for any column that is entirely missing.
                 last_known = features[feature_columns].ffill().iloc[-1]
                 last_row = last_row.fillna(last_known).fillna(0.0)
-            X_pred = scaler.transform(last_row)
-            pred_price = float(model.predict(X_pred)[0])
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="X does not have valid feature names",
+                    category=UserWarning,
+                )
+                X_pred = scaler.transform(last_row.values)
+                pred_price = float(model.predict(X_pred)[0])
             last_price = float(daily["Close"].iloc[-1])
 
             mape = backtest_results.get(symbol, {}).get("mape", 10.0)
@@ -946,9 +969,9 @@ Capital of ${initial_cash_total:,.0f} is split equally across selected stocks.
                         "Final Value ($)": f"${res.final_value:,.0f}",
                         "Forecast Trade (%)": f"{res.total_return_pct:+.1f}%",
                         "Buy & Hold (%)": f"{buy_hold_pct:+.1f}%",
-                        "Buys": res.n_buys,
-                        "Sells": res.n_sells,
-                        "Holds": res.n_holds,
+                        "Buys": str(res.n_buys),
+                        "Sells": str(res.n_sells),
+                        "Holds": str(res.n_holds),
                         "Costs ($)": f"${res.total_cost_paid:,.0f}",
                     })
                 sim_rows.append({

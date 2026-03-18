@@ -11,6 +11,7 @@ This module provides a simplified backtesting framework that:
 
 import pandas as pd
 import numpy as np
+import warnings
 from typing import Dict, Any, List, Optional, Tuple
 import logging
 from datetime import datetime
@@ -52,7 +53,8 @@ class StandaloneBacktester:
         target_column: str = "Close",
         forecast_horizon: int = 1,
         tune_hyperparams: bool = False,
-        n_tune_iter: int = 20,
+        n_tune_iter: int = 10,
+        tune_every_n: int = 5,
     ):
         """
         Initialize the standalone backtester.
@@ -66,7 +68,11 @@ class StandaloneBacktester:
             forecast_horizon: Number of periods to forecast ahead
             tune_hyperparams: If True, run adaptive random-search tuning at
                 each window using the 1-lag-back validation split.
-            n_tune_iter: Number of random candidates to evaluate per window.
+            n_tune_iter: Number of random candidates to evaluate per tuning
+                window (default 10).
+            tune_every_n: Re-run hyperparameter search only once every this
+                many windows; cached params are reused in between (default 5).
+                Set to 1 to tune at every window (original behaviour).
         """
         self.initial_train_size = initial_train_size
         self.test_size = test_size
@@ -76,6 +82,7 @@ class StandaloneBacktester:
         self.forecast_horizon = forecast_horizon
         self.tune_hyperparams = tune_hyperparams
         self.n_tune_iter = n_tune_iter
+        self.tune_every_n = tune_every_n
 
         # Fallback hyperparameters used when tuning is disabled or skipped
         self.best_params = DEFAULT_PARAMS.copy()
@@ -149,11 +156,12 @@ class StandaloneBacktester:
             X_test_scaled  = self.scaler.transform(X_test)
 
             # ── Adaptive hyperparameter tuning (1-lag-back window) ────────────
-            # Split the training block into tune-train and tune-val; the last
-            # forecast_horizon rows of the training block act as the lag-back
-            # validation window so tuning uses the most recent known behaviour.
+            # Tune only on windows 0, tune_every_n, 2*tune_every_n, …
+            # Intermediate windows reuse the most recently tuned params, which
+            # is safe because market regime rarely changes dramatically within
+            # a few steps.  This is the single biggest speed lever.
             window_params = self.best_params
-            if self.tune_hyperparams:
+            if self.tune_hyperparams and (i % self.tune_every_n == 0):
                 splits = build_lag_back_splits(
                     X_train_scaled, y_train_arr, self.forecast_horizon
                 )
@@ -162,13 +170,29 @@ class StandaloneBacktester:
                     window_params = tune_lgbm_params(
                         Xtt, ytt, Xtv, ytv, n_iter=self.n_tune_iter
                     )
+                    # Cache so intermediate windows can reuse without re-tuning
+                    self.best_params = window_params
 
             # Train model with (tuned or default) parameters
-            model = lgb.LGBMRegressor(**window_params)
-            model.fit(X_train_scaled, y_train_arr)
+            # Suppress the LightGBM 4.x / sklearn compatibility warning that fires
+            # when predicting with numpy after LightGBM auto-assigns feature names.
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="X does not have valid feature names",
+                    category=UserWarning,
+                )
+                model = lgb.LGBMRegressor(**window_params)
+                model.fit(X_train_scaled, y_train_arr)
 
             # Make predictions
-            predictions = model.predict(X_test_scaled)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="X does not have valid feature names",
+                    category=UserWarning,
+                )
+                predictions = model.predict(X_test_scaled)
             
             # Store results
             all_predictions.extend(predictions)

@@ -508,6 +508,7 @@ market_indices:
   - VOO    # Vanguard S&P 500 ETF
   - VTI    # Vanguard Total Stock Market
   - OEF    # iShares S&P 100 ETF
+  - COIN   # Coinbase Global
 
 # Legacy: default_stocks for backward compatibility (subset of sp100)
 default_stocks:
