@@ -6,7 +6,11 @@ A comprehensive stock forecasting system with machine learning models for analyz
 
 - **Streamlit UI**: Interactive app for stock selection, forecasting, backtesting, and trading simulation
 - **S&P 500 + Market Indices**: Select from 470+ stocks and ETFs (SPY, QQQ, DIA, etc.) covering the full S&P 500 universe
-- **LGBM 2-Stage**: Prophet or MA trend/seasonality + LightGBM; daily (≤5 days) and weekly horizon with volatility features
+- **Horizon-Aware Feature Tiers**: Three distinct daily feature sets keyed on forecast horizon — Short (1–5d), Medium (6–15d), Long (16–30d) — each progressively enriched with technical indicators, momentum, regime signals, and macro context
+- **Intraday Price Dynamics**: Open-close diff, overnight gap, candlestick shadows, and volume-spike features specifically tuned for 1-day forecasts
+- **FOMC Proximity Features**: Days-to/since Federal Reserve announcement, pre/post-meeting window flags (2022–2027 dates); all horizons
+- **Market-Wide Context**: SPY/QQQ return, VIX level/change/regime, and 10-Year Treasury yield merged as features for every stock — automatically skipped when forecasting SPY or QQQ themselves
+- **LGBM 2-Stage**: Prophet or MA trend/seasonality + LightGBM; all horizons use daily OHLCV data
 - **Trading Simulation**: $100k simulation with 5 research-driven enhancements — implied-return signal, dead-zone threshold, proportional position sizing, transaction cost model, and 200-day MA regime filter; user-adjustable parameters
 - **Capital Market Research**: News sentiment (FinBERT or keyword), SEC filings (10-K, 10-Q, 8-K), impact features; optional LGBM input via sidebar checkbox
 - **Feature Importance**: Gain-based and SHAP (optional) for directional analysis
@@ -35,7 +39,11 @@ stock-forecast/
 │   │   ├── capital_market_researcher.py
 │   │   ├── news_report_analyzer.py  # Sentiment, SEC filings
 │   │   └── research_agent.py
-│   └── feature_engineering/      # Lag, rolling, technical features
+│   └── feature_engineering/      # Lag, rolling, technical, intraday, FOMC, market features
+│       ├── horizon_features.py   # Medium/long-term technical indicators (RSI, MACD, ATR, CCI, regime)
+│       ├── intraday_features.py  # Open-close diff, gap, candlestick shadows, volume dynamics
+│       ├── macro_features.py     # FOMC meeting proximity (days_to_fomc, fomc_week_ahead/after)
+│       └── market_features.py    # SPY/QQQ/VIX/yield download and alignment
 ├── config/
 │   └── stocks_config.yaml        # S&P 500 (sp100_stocks + sp500_additional), market indices, download settings
 ├── tests/                        # Unit and integration tests
@@ -173,7 +181,7 @@ Edit `config/stocks_config.yaml` to customize:
 
 - **sp100_stocks**: S&P 100 constituents (105 tickers)
 - **sp500_additional**: Remaining S&P 500 members organised by GICS sector (~360 tickers); combined with `sp100_stocks` these cover the full S&P 500 universe (~465 names)
-- **market_indices**: SPY, QQQ, DIA, IWM, VOO, VTI, OEF
+- **market_indices**: SPY, QQQ, DIA, IWM, VOO, VTI, OEF, COIN (Coinbase) and other non-S&P tradeable assets
 - **default_stocks**: Quick-pick subset shown first in the dropdown
 - **download_settings**: Date ranges, intervals, API parameters
 
@@ -232,29 +240,29 @@ The system also supports:
 
 The system automatically creates the following features:
 
-### Technical Indicators
-- Simple Moving Averages (SMA)
-- Exponential Moving Averages (EMA)
-- Relative Strength Index (RSI)
-- Bollinger Bands
-- MACD (Moving Average Convergence Divergence)
-- Average True Range (ATR)
+Features are tiered by forecast horizon. All tiers operate on **daily OHLCV data**.
 
-### Price Features
-- Daily returns
-- Log returns
-- Price changes
-- Rolling statistics (mean, std, min, max)
-- Price position within rolling windows
+### Short-horizon features (1–5 days)
+- Close lags (1–5d), rolling MA/std (5/10/20d), daily volatility (Parkinson, ADR)
+- **Intraday dynamics**: open-close diff, overnight gap, upper/lower candlestick shadows, body size, volume-spike ratio (vs 20-day MA), all with 1-2 day lags
 
-### Time Features
-- Year, Month, Day
-- Day of week, Day of year
-- Quarter
+### Medium-horizon features (6–15 days)
+- All short features, plus: extended lags (10/15d), MA/std(50d)
+- RSI(14/21), MACD(12,26,9), Bollinger Band position/width, ATR(14)%, Stochastic %K(14), CCI(20), OBV-normalised
+- Multi-day momentum: 5d, 10d, 15d % returns
 
-### Volume Features
-- Volume moving averages
-- Volume rate of change
+### Long-horizon features (16–30 days)
+- All medium features, plus: extended lags (20/30d), MA/std(100d), MA(200d) regime
+- 50/200-day MA ratio (golden/death-cross), distance from 52-week high/low
+- Long-horizon momentum: 20d, 30d, 60d; cyclic calendar encoding (month/quarter sin/cos)
+- Volatility-regime ratio: 30-day vol ÷ 60-day vol
+
+### Macro & market context (all horizons)
+- **FOMC proximity**: days to/since next Fed announcement, pre/post-meeting binary flags (±5 days)
+- **SPY**: 1d return, 5d return, distance from 20-day MA
+- **QQQ**: 1d return (Nasdaq-100 tech/growth sentiment)
+- **VIX**: level, 1d change, distance from 20-day MA, elevated-fear flag (>25)
+- **10Y Treasury yield**: level and 1d change (interest-rate environment)
 
 ## Dependencies
 

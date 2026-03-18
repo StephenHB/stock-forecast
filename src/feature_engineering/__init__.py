@@ -37,6 +37,10 @@ from .technical_indicators import TechnicalIndicators
 from .time_features import TimeFeatures
 from .difference_features import DifferenceFeatures
 from .daily_volatility_features import DailyVolatilityFeatures
+from .horizon_features import add_medium_term_features, add_long_term_features
+from .intraday_features import add_intraday_features
+from .macro_features import add_fomc_features, FOMC_DATES
+from .market_features import add_market_features, download_market_reference_data
 
 __all__ = [
     'BaseFeatureTransformer',
@@ -48,6 +52,13 @@ __all__ = [
     'TimeFeatures',
     'DifferenceFeatures',
     'DailyVolatilityFeatures',
+    'add_medium_term_features',
+    'add_long_term_features',
+    'add_intraday_features',
+    'add_fomc_features',
+    'FOMC_DATES',
+    'add_market_features',
+    'download_market_reference_data',
 ]
 
 def create_feature_pipeline(transformers):

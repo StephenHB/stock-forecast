@@ -29,6 +29,8 @@ from src.forecasting import (
 from src.research import CapitalMarketResearcher
 from src.forecasting.feature_factory import (
     create_daily_features,
+    create_medium_features,
+    create_long_features,
     create_weekly_features,
     create_daily_targets,
     create_weekly_targets,
@@ -38,6 +40,7 @@ from src.forecasting.research_features import (
     get_research_features_for_symbols,
     append_research_features_to_data,
 )
+from src.feature_engineering.market_features import download_market_reference_data
 
 # Page config
 st.set_page_config(page_title="Stock Forecast", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
@@ -80,6 +83,12 @@ def download_stock_data(symbols: tuple, start_date: str, end_date: str):
         interval="1d",
         save_data=False,
     )
+
+
+@st.cache_data(ttl=300)
+def load_market_reference_data(start_date: str, end_date: str) -> dict:
+    """Download SPY, QQQ, ^VIX, ^TNX reference data (cached alongside stock data)."""
+    return download_market_reference_data(start_date, end_date)
 
 
 def _days_to_weeks(forecast_days: int) -> int:
@@ -136,23 +145,49 @@ def _get_start_end_prices_from_daily(
     return start_price, end_price
 
 
+def _impute_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Impute NaN values introduced by new feature modules (market data gaps,
+    intraday lags, FOMC edge cases) so they don't silently drop training rows
+    or produce NA predictions.
+
+    Strategy (time-series safe — no lookahead for forward-fill direction):
+      1. Forward-fill: use the latest available value going forward in time.
+         Handles market features whose data isn't yet published for today.
+      2. Backward-fill: for the very first rows that have no prior value to
+         forward-fill from, use the earliest available value (no lookahead
+         risk here since these rows precede the model's training window).
+      3. Zero-fill: absolute last resort for columns that are entirely NaN
+         (e.g. reference ticker download failed for this date range).
+    """
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    result = df.copy()
+    result[numeric_cols] = (
+        result[numeric_cols]
+        .ffill()   # latest available value forward
+        .bfill()   # earliest available value backward for leading NaN
+        .fillna(0) # final fallback if entire column is NaN
+    )
+    return result
+
+
 def run_backtest(
     stock_data: dict,
     forecast_horizon_weeks: int,
     forecast_days: int,
     include_research_features: bool = False,
+    market_data: dict | None = None,
 ) -> dict:
-    """Run backtesting. Uses daily data + volatility features when horizon <= 5 days."""
-    use_daily = forecast_days <= 5
-    weekly_aggregator = (
-        WeeklyAggregator(
-            price_columns=["Open", "High", "Low", "Close"],
-            volume_columns=["Volume"],
-        )
-        if not use_daily
-        else None
-    )
+    """
+    Run backtesting with horizon-aware features.
 
+    Three feature tiers, all using daily OHLCV data:
+      Short   (1–5d)  : microstructure volatility + short lags + intraday dynamics
+      Medium  (6–15d) : technical indicators (RSI, MACD, BB, ATR, CCI) + momentum
+      Long   (16–30d) : regime (MA200), 52-week levels, cyclic calendar + vol-regime
+
+    All tiers include FOMC proximity and broad-market context (SPY/QQQ/VIX/yield).
+    """
     results = {}
     for symbol, daily_df in stock_data.items():
         try:
@@ -166,25 +201,30 @@ def run_backtest(
             cols = {c: c.replace(" ", "_") for c in daily.columns if " " in c}
             daily = daily.rename(columns=cols)
 
-            if use_daily:
-                features = create_daily_features(daily)
-                data = create_daily_targets(features, forecast_days)
-                target_col = f"target_{forecast_days}d"
-                returns = daily["Close"].pct_change().dropna()
-                periods = 252
+            # Select feature tier based on forecast horizon
+            if forecast_days <= 5:
+                features = create_daily_features(daily, market_data=market_data, symbol=symbol)
+                min_rows, train_cap, train_floor = 60, 260, 60
+            elif forecast_days <= 15:
+                features = create_medium_features(daily, market_data=market_data, symbol=symbol)
+                min_rows, train_cap, train_floor = 100, 300, 100
             else:
-                weekly = weekly_aggregator.aggregate(daily)
-                features = create_weekly_features(weekly)
-                data = create_weekly_targets(features, forecast_horizon_weeks)
-                target_col = f"target_{forecast_horizon_weeks}w"
-                initial_train = 13
-                min_train = 6
-                returns = weekly["Close"].pct_change().dropna()
-                periods = 52
+                features = create_long_features(daily, market_data=market_data, symbol=symbol)
+                # min_rows=100 reflects the 200-day MA min_periods=100 warm-up;
+                # train_floor is overridden adaptively below after we know n_rows.
+                min_rows, train_cap, train_floor = 100, 400, 100
+
+            # Impute NaN in new feature columns (market gaps, intraday lags)
+            # before adding the target so dropna() doesn't discard training rows.
+            features = _impute_features(features)
+
+            data = create_daily_targets(features, forecast_days)
+            target_col = f"target_{forecast_days}d"
+            returns = daily["Close"].pct_change().dropna()
+            periods = 252
 
             data = data.dropna()
             n_rows = len(data)
-            min_rows = 60 if use_daily else 20
             if n_rows < min_rows:
                 continue
 
@@ -196,10 +236,13 @@ def run_backtest(
                 except Exception:
                     pass  # Fall back to price-only features if research fails
 
-            # Scale daily training size for short backtests (1yr ~252 days)
-            if use_daily:
-                initial_train = min(260, max(60, n_rows - 30))
-                min_train = min(60, max(20, n_rows // 4))
+            # For long horizons with limited data, adapt train_floor to n_rows
+            # so initial_train doesn't exceed available rows.
+            if forecast_days > 15:
+                train_floor = max(80, int(n_rows * 0.60))
+
+            initial_train = min(train_cap, max(train_floor, n_rows - forecast_days * 2))
+            min_train = min(train_floor, max(train_floor // 3, n_rows // 5))
 
             feature_columns = get_feature_columns(data, target_col)
 
@@ -208,12 +251,10 @@ def run_backtest(
                 test_size=1,
                 # Non-overlapping windows: step forward by the full horizon so
                 # consecutive signals don't share target days.
-                # Daily: step by forecast_days (e.g. 5-day horizon → signal every 5 days).
-                # Weekly: step by 1 week (already matches a 1-week-ahead target).
-                step_size=forecast_days if use_daily else 1,
+                step_size=forecast_days,
                 min_train_size=min_train,
                 target_column=target_col,
-                forecast_horizon=forecast_horizon_weeks if not use_daily else forecast_days,
+                forecast_horizon=forecast_days,
             )
             bt_results = backtester.backtest(data, feature_columns=feature_columns)
             metrics = bt_results["overall_metrics"]
@@ -247,20 +288,17 @@ def run_forecast(
     forecast_days: int,
     backtest_results: dict,
     include_research_features: bool = False,
+    market_data: dict | None = None,
 ) -> dict:
-    """Run forecast. Uses daily data + volatility features when horizon <= 5 days."""
+    """
+    Run forecast with horizon-aware features matching run_backtest tiers.
+
+    Short (1–5d): daily volatility features.
+    Medium (6–15d): technical indicators + momentum.
+    Long (16–30d): regime, 52-week levels, cyclic calendar.
+    """
     import lightgbm as lgb
     from sklearn.preprocessing import StandardScaler
-
-    use_daily = forecast_days <= 5
-    weekly_aggregator = (
-        WeeklyAggregator(
-            price_columns=["Open", "High", "Low", "Close"],
-            volume_columns=["Volume"],
-        )
-        if not use_daily
-        else None
-    )
 
     best_params = {
         "n_estimators": 200,
@@ -289,18 +327,26 @@ def run_forecast(
             cols = {c: c.replace(" ", "_") for c in daily.columns if " " in c}
             daily = daily.rename(columns=cols)
 
-            if use_daily:
-                features = create_daily_features(daily)
-                data = create_daily_targets(features, forecast_days)
-                target_col = f"target_{forecast_days}d"
+            # Match the same feature tier used in run_backtest
+            if forecast_days <= 5:
+                features = create_daily_features(daily, market_data=market_data, symbol=symbol)
+                min_rows = 60
+            elif forecast_days <= 15:
+                features = create_medium_features(daily, market_data=market_data, symbol=symbol)
+                min_rows = 100
             else:
-                weekly = weekly_aggregator.aggregate(daily)
-                features = create_weekly_features(weekly)
-                data = create_weekly_targets(features, forecast_horizon_weeks)
-                target_col = f"target_{forecast_horizon_weeks}w"
+                features = create_long_features(daily, market_data=market_data, symbol=symbol)
+                # 100 matches the 200-day MA min_periods=100 warm-up; forecasting
+                # does not need a fixed 200-row minimum like the backtester does.
+                min_rows = 100
+
+            # Impute NaN in new feature columns before adding target.
+            features = _impute_features(features)
+
+            data = create_daily_targets(features, forecast_days)
+            target_col = f"target_{forecast_days}d"
 
             data = data.dropna()
-            min_rows = 60 if use_daily else 20
             if len(data) < min_rows:
                 results[symbol] = {"error": "Insufficient data"}
                 continue
@@ -321,7 +367,21 @@ def run_forecast(
             model = lgb.LGBMRegressor(**best_params)
             model.fit(X_scaled, y)
 
-            last_row = data.iloc[-1:][feature_columns]
+            # Use the most recent row from `features` (before target was appended)
+            # so the prediction is anchored to TODAY, not to `forecast_days` ago.
+            # data.iloc[-1] would be forecast_days old because dropna() removes the
+            # last `forecast_days` rows whose target is still NaN (future not yet known).
+            #
+            # The most recent row may still have NaN after _impute_features if market
+            # data (SPY/VIX/yield) wasn't yet available for today's date. Fill any
+            # residual NaN with column medians from the training data so the model
+            # always receives a complete feature vector.
+            last_row = features[feature_columns].iloc[-1:].copy()
+            if last_row.isnull().any().any():
+                # Fill with the last known value from the training window,
+                # then fall back to 0 for any column that is entirely missing.
+                last_known = features[feature_columns].ffill().iloc[-1]
+                last_row = last_row.fillna(last_known).fillna(0.0)
             X_pred = scaler.transform(last_row)
             pred_price = float(model.predict(X_pred)[0])
             last_price = float(daily["Close"].iloc[-1])
@@ -443,12 +503,20 @@ def main():
                 st.error("Failed to download data. Check your connection.")
                 return
 
+            # Download market reference data (SPY, QQQ, VIX, 10Y yield) once
+            # and share across all per-stock feature pipelines.
+            market_data = load_market_reference_data(
+                start_date.strftime("%Y-%m-%d"),
+                end_date.strftime("%Y-%m-%d"),
+            )
+
             backtest_results = run_backtest(
-                stock_data, forecast_weeks, forecast_days, include_research_features
+                stock_data, forecast_weeks, forecast_days,
+                include_research_features, market_data=market_data,
             )
             forecast_results = run_forecast(
                 stock_data, forecast_weeks, forecast_days, backtest_results,
-                include_research_features,
+                include_research_features, market_data=market_data,
             )
 
         # Trading simulation: 100k total, split equally across stocks

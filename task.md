@@ -56,6 +56,30 @@ When forecast horizon <= 5 days, the app now uses:
 
 **Optional:** `pip install stock-forecast[prophet]` for Prophet; `pip install stock-forecast[finbert]` for FinBERT. Research features use yfinance; on some systems this can cause crashes—use checkbox only if stable.
 
+## Long/Short-Term Horizon-Aware Features (long-short-term-forecasting)
+
+- [x] Create branch `long-short-term-forecasting`
+- [x] Audit existing feature pipeline: binary `use_daily` split — short (≤5d) uses daily features, everything else uses weekly-aggregated features (lossy for 15–30d)
+- [x] Create `src/feature_engineering/horizon_features.py` with two new feature sets:
+  - `add_medium_term_features` (6–15d): extended lags (10, 15d), longer MA/std (50d), RSI(14/21), MACD(12,26,9), Bollinger Band position, ATR(14)%, Stochastic %K(14), CCI(20), OBV-normalised, 15d momentum
+  - `add_long_term_features` (16–30d): all medium features + lags (20, 30d), MA(100d), 50/200-day MA ratio & regime flag, 52-week high/low distance, 20/30/60d momentum, cyclic month/quarter encoding, volatility-regime ratio
+- [x] Add `create_medium_features` and `create_long_features` to `src/forecasting/feature_factory.py`
+- [x] Export new functions from `src/feature_engineering/__init__.py`
+- [x] Replace binary `use_daily` flag in `app.py` `run_backtest` and `run_forecast` with three-tier horizon logic (Short 1–5d / Medium 6–15d / Long 16–30d), all on daily OHLCV data
+- [x] Smoke-tested: 5d → 30 features / 476 rows; 10d → 41 features / 466 rows; 30d → 60 features / 371 rows
+- [x] Fix: lower `min_rows` to 100 for long horizon; adaptive `train_floor = max(80, n_rows × 0.60)` — allows 1-year backtest window (≈122 usable rows) to produce predictions rather than NA
+- [x] Fix: use most recent feature row for prediction (not `forecast_days`-old row from `data.dropna()`)
+- [x] Add `src/feature_engineering/intraday_features.py`: open-close diff, overnight gap, candlestick shadows (upper/lower/body), volume-spike ratio, 1–2 day lags — short-horizon signal
+- [x] Add `src/feature_engineering/macro_features.py`: FOMC announcement proximity (2022–2027 dates) — `days_to_fomc`, `days_since_fomc`, `fomc_week_ahead`, `fomc_week_after`
+- [x] Add `src/feature_engineering/market_features.py`: download SPY/QQQ/^VIX/^TNX; merge as features — `spy_return_1d/5d`, `spy_ma20_ratio`, `qqq_return_1d`, `vix_level/change/ma20_ratio/high`, `yield_10y/chg_1d`; skips self-reference (e.g. SPY when forecasting SPY)
+- [x] Wire intraday + FOMC + market features into all three tiers in `feature_factory.py`
+- [x] `app.py`: download market reference data once per run (`load_market_reference_data`), pass to `run_backtest` and `run_forecast`
+- [x] Add `COIN` (Coinbase Global) to `market_indices` in `stocks_config.yaml`
+- [x] Fix: `_align()` in `market_features.py` — re-attach original stock DataFrame index after midnight-floor reindex to prevent timestamp mismatch that made all market feature columns entirely NaN
+- [x] Fix: `_impute_features()` in `app.py` — ffill → bfill → fillna(0); prediction row uses last known value instead of column median
+- [x] Update README: feature tiers section, project structure, market_indices list
+- [x] PR: Merge `long-short-term-forecasting` → `main`
+
 ## Expand Stock Universe to S&P 500 (feature/sp500-stocks)
 
 - [x] Create branch `feature/sp500-stocks`
