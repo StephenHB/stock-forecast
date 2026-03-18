@@ -56,6 +56,17 @@ When forecast horizon <= 5 days, the app now uses:
 
 **Optional:** `pip install stock-forecast[prophet]` for Prophet; `pip install stock-forecast[finbert]` for FinBERT. Research features use yfinance; on some systems this can cause crashes—use checkbox only if stable.
 
+## Expand Stock Universe to S&P 500 (feature/sp500-stocks)
+
+- [x] Create branch `feature/sp500-stocks`
+- [x] Add `sp500_additional` section to `config/stocks_config.yaml` with ~360 extra tickers organised by GICS sector (Communication Services, Consumer Discretionary, Consumer Staples, Energy, Financials, Health Care, Industrials, Information Technology, Materials, Real Estate, Utilities)
+- [x] Verified no duplicates between `sp100_stocks` and `sp500_additional`; total unique stock pool = 472 symbols
+- [x] Updated `load_available_stocks()` in `app.py` to merge `sp100_stocks + sp500_additional`
+- [x] Updated multiselect help text from "S&P 100 stocks" to "S&P 500 stocks"
+- [x] Updated README: feature description, project structure comment, Configuration section
+- [x] Updated task.md with this task log
+- [ ] PR: Merge `feature/sp500-stocks` → `main`
+
 ## Trading Simulation Strategy Review (review-trading-simulation-strategy)
 
 - [x] Create branch `review-trading-simulation-strategy`
