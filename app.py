@@ -40,6 +40,7 @@ from src.forecasting.research_features import (
     get_research_features_for_symbols,
     append_research_features_to_data,
 )
+from src.feature_engineering.market_features import download_market_reference_data
 
 # Page config
 st.set_page_config(page_title="Stock Forecast", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
@@ -82,6 +83,12 @@ def download_stock_data(symbols: tuple, start_date: str, end_date: str):
         interval="1d",
         save_data=False,
     )
+
+
+@st.cache_data(ttl=300)
+def load_market_reference_data(start_date: str, end_date: str) -> dict:
+    """Download SPY, QQQ, ^VIX, ^TNX reference data (cached alongside stock data)."""
+    return download_market_reference_data(start_date, end_date)
 
 
 def _days_to_weeks(forecast_days: int) -> int:
@@ -143,14 +150,17 @@ def run_backtest(
     forecast_horizon_weeks: int,
     forecast_days: int,
     include_research_features: bool = False,
+    market_data: dict | None = None,
 ) -> dict:
     """
     Run backtesting with horizon-aware features.
 
     Three feature tiers, all using daily OHLCV data:
-      Short   (1–5d)  : microstructure volatility + short lags
+      Short   (1–5d)  : microstructure volatility + short lags + intraday dynamics
       Medium  (6–15d) : technical indicators (RSI, MACD, BB, ATR, CCI) + momentum
       Long   (16–30d) : regime (MA200), 52-week levels, cyclic calendar + vol-regime
+
+    All tiers include FOMC proximity and broad-market context (SPY/QQQ/VIX/yield).
     """
     results = {}
     for symbol, daily_df in stock_data.items():
@@ -167,13 +177,13 @@ def run_backtest(
 
             # Select feature tier based on forecast horizon
             if forecast_days <= 5:
-                features = create_daily_features(daily)
+                features = create_daily_features(daily, market_data=market_data, symbol=symbol)
                 min_rows, train_cap, train_floor = 60, 260, 60
             elif forecast_days <= 15:
-                features = create_medium_features(daily)
+                features = create_medium_features(daily, market_data=market_data, symbol=symbol)
                 min_rows, train_cap, train_floor = 100, 300, 100
             else:
-                features = create_long_features(daily)
+                features = create_long_features(daily, market_data=market_data, symbol=symbol)
                 # min_rows=100 reflects the 200-day MA min_periods=100 warm-up;
                 # train_floor is overridden adaptively below after we know n_rows.
                 min_rows, train_cap, train_floor = 100, 400, 100
@@ -248,6 +258,7 @@ def run_forecast(
     forecast_days: int,
     backtest_results: dict,
     include_research_features: bool = False,
+    market_data: dict | None = None,
 ) -> dict:
     """
     Run forecast with horizon-aware features matching run_backtest tiers.
@@ -288,13 +299,13 @@ def run_forecast(
 
             # Match the same feature tier used in run_backtest
             if forecast_days <= 5:
-                features = create_daily_features(daily)
+                features = create_daily_features(daily, market_data=market_data, symbol=symbol)
                 min_rows = 60
             elif forecast_days <= 15:
-                features = create_medium_features(daily)
+                features = create_medium_features(daily, market_data=market_data, symbol=symbol)
                 min_rows = 100
             else:
-                features = create_long_features(daily)
+                features = create_long_features(daily, market_data=market_data, symbol=symbol)
                 # 100 matches the 200-day MA min_periods=100 warm-up; forecasting
                 # does not need a fixed 200-row minimum like the backtester does.
                 min_rows = 100
@@ -453,12 +464,20 @@ def main():
                 st.error("Failed to download data. Check your connection.")
                 return
 
+            # Download market reference data (SPY, QQQ, VIX, 10Y yield) once
+            # and share across all per-stock feature pipelines.
+            market_data = load_market_reference_data(
+                start_date.strftime("%Y-%m-%d"),
+                end_date.strftime("%Y-%m-%d"),
+            )
+
             backtest_results = run_backtest(
-                stock_data, forecast_weeks, forecast_days, include_research_features
+                stock_data, forecast_weeks, forecast_days,
+                include_research_features, market_data=market_data,
             )
             forecast_results = run_forecast(
                 stock_data, forecast_weeks, forecast_days, backtest_results,
-                include_research_features,
+                include_research_features, market_data=market_data,
             )
 
         # Trading simulation: 100k total, split equally across stocks
