@@ -40,3 +40,18 @@ When forecast horizon <= 5 days, the app now uses:
 - [x] PR: Merge `feat/model-enhancement-research` → `main`
 
 **Note:** Capital Market Research expander uses yfinance; expanding it may cause connection issues on some systems. Research features are UI-only; pipeline integration (`research_features.py`) is optional and not enabled by default.
+
+## LGBM 2-Stage (feat/lgbm-2stage)
+
+- [x] Create branch
+- [x] Add Prophet trend/seasonality features for LGBM input
+- [x] Add MA fallback when data too small (< 60 rows)
+- [x] Integrate into create_daily_features and create_weekly_features
+- [x] Add get_forecast_trend_seasonality for prediction phase (future dates)
+- [x] Information leakage audit: `docs/LGBM_INFORMATION_LEAKAGE_AUDIT.md`
+- [x] Integrate research features (news, SEC, financials) into run_backtest and run_forecast
+- [x] Add sidebar checkbox "Include research features (news, SEC, financials)"
+- [x] Add optional FinBERT for news sentiment (falls back to keyword when not installed)
+- [ ] PR: Merge `feat/lgbm-2stage` → `main`
+
+**Optional:** `pip install stock-forecast[prophet]` for Prophet; `pip install stock-forecast[finbert]` for FinBERT. Research features use yfinance; on some systems this can cause crashes—use checkbox only if stable.

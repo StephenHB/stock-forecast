@@ -32,6 +32,10 @@ from src.forecasting.feature_factory import (
     create_weekly_targets,
     get_feature_columns,
 )
+from src.forecasting.research_features import (
+    get_research_features_for_symbols,
+    append_research_features_to_data,
+)
 
 # Page config
 st.set_page_config(page_title="Stock Forecast", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
@@ -133,6 +137,7 @@ def run_backtest(
     stock_data: dict,
     forecast_horizon_weeks: int,
     forecast_days: int,
+    include_research_features: bool = False,
 ) -> dict:
     """Run backtesting. Uses daily data + volatility features when horizon <= 5 days."""
     use_daily = forecast_days <= 5
@@ -176,6 +181,14 @@ def run_backtest(
             min_rows = 60 if use_daily else 20
             if n_rows < min_rows:
                 continue
+
+            # Optional: append research features (news sentiment, SEC, financials)
+            if include_research_features:
+                try:
+                    research_feats = get_research_features_for_symbols([symbol])
+                    data = append_research_features_to_data(data, symbol, research_feats)
+                except Exception:
+                    pass  # Fall back to price-only features if research fails
 
             # Scale daily training size for short backtests (1yr ~252 days)
             if use_daily:
@@ -223,6 +236,7 @@ def run_forecast(
     forecast_horizon_weeks: int,
     forecast_days: int,
     backtest_results: dict,
+    include_research_features: bool = False,
 ) -> dict:
     """Run forecast. Uses daily data + volatility features when horizon <= 5 days."""
     import lightgbm as lgb
@@ -277,6 +291,14 @@ def run_forecast(
             if len(data) < min_rows:
                 results[symbol] = {"error": "Insufficient data"}
                 continue
+
+            # Optional: append research features (news sentiment, SEC, financials)
+            if include_research_features:
+                try:
+                    research_feats = get_research_features_for_symbols([symbol])
+                    data = append_research_features_to_data(data, symbol, research_feats)
+                except Exception:
+                    pass  # Fall back to price-only features if research fails
 
             feature_columns = get_feature_columns(data, target_col)
 
@@ -346,6 +368,11 @@ def main():
             value=2,
             help="Years of daily data for backtesting",
         )
+        include_research_features = st.checkbox(
+            "Include research features (news, SEC, financials)",
+            value=False,
+            help="Add news sentiment, earnings, and financial metrics as LGBM features. May be slow or unstable on some systems.",
+        )
         run_btn = st.button("🚀 Run Forecast & Backtest", type="primary")
 
     forecast_weeks = _days_to_weeks(forecast_days)
@@ -368,10 +395,11 @@ def main():
                 return
 
             backtest_results = run_backtest(
-                stock_data, forecast_weeks, forecast_days
+                stock_data, forecast_weeks, forecast_days, include_research_features
             )
             forecast_results = run_forecast(
-                stock_data, forecast_weeks, forecast_days, backtest_results
+                stock_data, forecast_weeks, forecast_days, backtest_results,
+                include_research_features,
             )
 
         # Trading simulation: 100k total, split equally across stocks
