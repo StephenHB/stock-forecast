@@ -73,6 +73,19 @@ Interactive UI for stock selection, forecast horizon (n days), and backtesting (
 4. Select repo `StephenHB/stock-forecast`, branch `main`, main file `app.py`
 5. Click **Deploy** — dependencies install from `requirements.txt`
 
+> **Cloud storage**: Streamlit Community Cloud sets `STREAMLIT_SHARING_MODE` automatically.
+> The app detects this and switches to in-session-only caching (`@st.cache_data`);
+> no files are written to the ephemeral filesystem.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `STOCK_DATA_DIR` | `<project_root>/data/` | Override the local data directory (absolute or relative path). |
+| `IS_CLOUD` | unset | Set to `"true"` to force cloud mode on platforms that don't set `STREAMLIT_SHARING_MODE` automatically (e.g. Railway, Render, Heroku). |
+
+On cloud, the sidebar shows a **Storage mode** indicator confirming whether data is saved locally or fetched fresh each session.
+
 ## Quick Start
 
 ### 1. Download Stock Data
@@ -80,7 +93,7 @@ Interactive UI for stock selection, forecast horizon (n days), and backtesting (
 ```python
 from src.data_preprocess import StockDataLoader
 
-# Initialize the data loader (uses default path: /Users/stephenzhang/Downloads/stock_data)
+# Initialize the data loader (defaults to <project_root>/data/, or STOCK_DATA_DIR env var)
 loader = StockDataLoader()
 
 # Or use a custom data directory

@@ -18,6 +18,8 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
 
+from src.utils.environment import is_cloud_environment, get_data_dir
+
 from src.data_preprocess.stock_data_loader import StockDataLoader
 from src.forecasting import (
     WeeklyAggregator,
@@ -374,6 +376,14 @@ def main():
             help="Add news sentiment, earnings, and financial metrics as LGBM features. May be slow or unstable on some systems.",
         )
         run_btn = st.button("🚀 Run Forecast & Backtest", type="primary")
+
+        st.divider()
+        st.caption("**Storage mode**")
+        if is_cloud_environment():
+            st.info("☁️ Cloud — data is fetched fresh each session (no local saving).", icon="ℹ️")
+        else:
+            _data_dir = get_data_dir()
+            st.success(f"💾 Local — data directory: `{_data_dir}`", icon="✅")
 
     forecast_weeks = _days_to_weeks(forecast_days)
     end_date = datetime.now()

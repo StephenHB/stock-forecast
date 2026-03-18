@@ -154,6 +154,14 @@ download_settings:
   proxy: null
 
 # Data storage settings
+#
+# Environment variables for storage configuration:
+#   STOCK_DATA_DIR  — Override the local data directory (absolute or relative path).
+#                     Default: <project_root>/data/
+#   IS_CLOUD        — Set to "true" to force cloud mode on platforms that do not set
+#                     STREAMLIT_SHARING_MODE automatically (e.g. Railway, Render, Heroku).
+#                     When cloud mode is active, all disk I/O is skipped and the app
+#                     relies on @st.cache_data for in-session caching.
 storage_settings:
   data_format: "csv"  # csv, parquet, pickle
   save_raw_data: true
