@@ -35,3 +35,11 @@ tests/                 → unit tests
 2. Begin analysis with data exploration and summary statistics
 3. Document data sources, assumptions, and methodologies
 4. Add unit tests for new functionality
+
+## Agent & Safety Conventions
+
+- **Orchestration**: For multi-step or cross-domain work (forecasting + UI + tests + git), follow `.cursor/skills/agent-manager/` — clarify ambiguous requirements with the user, plan, then delegate to specialist skills.
+- **Secrets**: Never commit API keys, tokens, or real credentials. Use environment variables (e.g. `STOCK_DATA_DIR`, `.env` gitignored); do not paste secrets into chat or code.
+- **Scope**: Implement what was asked; avoid unrelated refactors or extra files unless the user requested them.
+- **Destructive actions**: Confirm with the user before irreversible steps (e.g. `git reset --hard`, mass deletes, overwriting shared data).
+- **Read before edit**: Match existing naming, imports, and patterns in the touched files.

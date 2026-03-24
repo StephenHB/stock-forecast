@@ -284,6 +284,7 @@ Optional extras:
 This project uses Cursor agent skills and rules for consistent AI assistance:
 
 - **`.cursor/rules/`** — Core project standards (always applied)
+- **`.cursor/skills/agent-manager/`** — Orchestration: clarify intent, plan execution, assign work to specialist skills (use for complex or multi-part tasks)
 - **`.cursor/skills/stock-forecast-analysis/`** — Data analysis, ML, and visualization guidance (applied when working with notebooks, pandas, scikit-learn, etc.)
 - **`.cursor/skills/testing-agent/`** — Testing guidance: verify new features work as designed and integrate with existing workflows
 - **`.cursor/skills/git-agent/`** — Git commit, push, and pull request assistance when there are significant changes
