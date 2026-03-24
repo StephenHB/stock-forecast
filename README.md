@@ -281,9 +281,15 @@ Optional extras:
 
 ## AI Agent Setup
 
-This project uses Cursor agent skills and rules for consistent AI assistance:
+This project uses Cursor agent skills and rules for consistent AI assistance.
 
-- **`.cursor/rules/`** — Core project standards (always applied)
+### Orchestration
+
+For **multi-step or cross-domain** work (e.g. forecasting code, Streamlit UI, tests, and git in one effort), use **`.cursor/skills/agent-manager/`** first: clarify intent when needed, plan phases, then assign tasks to specialist skills. Details are in that skill’s `SKILL.md` and in `.cursor/rules/` (Orchestration section).
+
+### Rules and specialist skills
+
+- **`.cursor/rules/`** — Core project standards (always applied), including orchestration and safety conventions
 - **`.cursor/skills/stock-forecast-analysis/`** — Data analysis, ML, and visualization guidance (applied when working with notebooks, pandas, scikit-learn, etc.)
 - **`.cursor/skills/testing-agent/`** — Testing guidance: verify new features work as designed and integrate with existing workflows
 - **`.cursor/skills/git-agent/`** — Git commit, push, and pull request assistance when there are significant changes
@@ -301,7 +307,7 @@ This project uses Cursor agent skills and rules for consistent AI assistance:
 
 ### Code Standards
 
-1. Follow the coding standards in `.cursor/rules/` and `.cursor/skills/stock-forecast-analysis/`
+1. Follow the coding standards in `.cursor/rules/` and `.cursor/skills/stock-forecast-analysis/`; for multi-step or cross-domain tasks, follow `.cursor/skills/agent-manager/` (orchestration)
 2. Use functional programming where appropriate
 3. Implement rigorous statistical validation
 4. Add unit tests for new functionality
