@@ -7,15 +7,12 @@ Interactive UI for:
 - Viewing backtesting results (sidebar, default 2 years)
 """
 
-import os
-import concurrent.futures
 import streamlit as st
 import pandas as pd
 import numpy as np
 import yaml
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 # Project setup
 import sys
@@ -174,264 +171,12 @@ def _impute_features(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-# Display-only cap for Streamlit line charts (does not affect backtest arrays or simulation).
-BACKTEST_CHART_MAX_POINTS = 500
-
-
-def _parallel_workers_slider_max() -> int:
-    """
-    Upper bound for the parallel-workers slider.
-
-    Do not use ``min(8, os.cpu_count())`` alone: when ``cpu_count()`` is 1 (common in
-    containers/VMs), the slider max would be 1 and parallel runs could never be selected.
-    """
-    n = os.cpu_count() or 4
-    return max(8, min(32, n * 2))
-
-
-def _map_tuple_backtest(args):
-    return _run_backtest_single_symbol(*args)
-
-
-def _map_tuple_forecast(args):
-    return _run_forecast_single_symbol(*args)
-
-
-def _effective_lgb_num_threads(max_workers: int, user_threads: int) -> Optional[int]:
-    """
-    Map UI settings to LightGBM ``num_threads``.
-
-    - ``user_threads`` 0 = auto: sequential runs use library default (None); parallel
-      runs default to 1 thread per fit to reduce CPU oversubscription.
-    - ``user_threads`` > 0 = explicit override.
-    """
-    if user_threads > 0:
-        return user_threads
-    if max_workers == 1:
-        return None
-    return 1
-
-
-def _downsample_for_line_chart(df: pd.DataFrame, max_points: int = BACKTEST_CHART_MAX_POINTS) -> pd.DataFrame:
-    """Return up to ``max_points`` rows for chart rendering only."""
-    n = len(df)
-    if n <= max_points:
-        return df
-    idx = np.linspace(0, n - 1, max_points, dtype=int)
-    return df.iloc[idx]
-
-
-def _run_backtest_single_symbol(
-    symbol: str,
-    daily_df: pd.DataFrame,
-    forecast_days: int,
-    include_research_features: bool,
-    market_data: dict | None,
-    lgb_num_threads: Optional[int],
-) -> tuple[str, dict | None]:
-    """
-    Backtest one symbol. Returns (symbol, None) if skipped (insufficient rows),
-    else (symbol, result dict). On error, (symbol, {"error": ...}).
-    """
-    try:
-        daily = daily_df.copy()
-        if "Date" in daily.columns:
-            _dt = pd.to_datetime(daily["Date"])
-            daily["Date"] = _dt.dt.tz_convert(None) if _dt.dt.tz is not None else _dt
-            daily.set_index("Date", inplace=True)
-        elif isinstance(daily.index, pd.DatetimeIndex) and daily.index.tz is not None:
-            daily.index = daily.index.tz_convert(None)
-        cols = {c: c.replace(" ", "_") for c in daily.columns if " " in c}
-        daily = daily.rename(columns=cols)
-
-        if forecast_days <= 5:
-            features = create_daily_features(daily, market_data=market_data, symbol=symbol)
-            min_rows, train_cap, train_floor = 60, 260, 60
-        elif forecast_days <= 15:
-            features = create_medium_features(daily, market_data=market_data, symbol=symbol)
-            min_rows, train_cap, train_floor = 100, 300, 100
-        else:
-            features = create_long_features(daily, market_data=market_data, symbol=symbol)
-            min_rows, train_cap, train_floor = 100, 400, 100
-
-        features = _impute_features(features)
-        data = create_daily_targets(features, forecast_days)
-        target_col = f"target_{forecast_days}d"
-        returns = daily["Close"].pct_change().dropna()
-        periods = 252
-
-        data = data.dropna()
-        n_rows = len(data)
-        if n_rows < min_rows:
-            return symbol, None
-
-        if include_research_features:
-            try:
-                research_feats = get_research_features_for_symbols([symbol])
-                data = append_research_features_to_data(data, symbol, research_feats)
-            except Exception:
-                pass
-
-        if forecast_days > 15:
-            train_floor = max(80, int(n_rows * 0.60))
-
-        initial_train = min(train_cap, max(train_floor, n_rows - forecast_days * 2))
-        min_train = min(train_floor, max(train_floor // 3, n_rows // 5))
-
-        feature_columns = get_feature_columns(data, target_col)
-
-        backtester = StandaloneBacktester(
-            initial_train_size=initial_train,
-            test_size=1,
-            step_size=forecast_days,
-            min_train_size=min_train,
-            target_column=target_col,
-            forecast_horizon=forecast_days,
-            lgb_num_threads=lgb_num_threads,
-        )
-        bt_results = backtester.backtest(data, feature_columns=feature_columns)
-        metrics = bt_results["overall_metrics"]
-        volatility_annual = (
-            returns.std() * np.sqrt(periods) * 100 if len(returns) > 1 else 0.0
-        )
-        price_series = data["Close"] if "Close" in data.columns else data.iloc[:, 0]
-
-        out = {
-            "mape": metrics["mape"] * 100,
-            "rmse": metrics["rmse"],
-            "r2": metrics["r2"],
-            "windows": bt_results["total_windows"],
-            "predictions": bt_results["predictions"],
-            "actuals": bt_results["actuals"],
-            "dates": bt_results["dates"],
-            "volatility_pct": volatility_annual,
-            "forecast_days": forecast_days,
-            "price_series": price_series,
-        }
-        return symbol, out
-    except Exception as e:
-        return symbol, {"error": str(e)}
-
-
-def _run_forecast_single_symbol(
-    symbol: str,
-    daily_df: pd.DataFrame,
-    forecast_days: int,
-    backtest_results: dict,
-    include_research_features: bool,
-    market_data: dict | None,
-    lgb_num_threads: Optional[int],
-) -> tuple[str, dict]:
-    """Forecast one symbol; returns (symbol, result dict or {"error": ...})."""
-    import lightgbm as lgb
-    from sklearn.preprocessing import StandardScaler
-
-    try:
-        best_params = {
-            "n_estimators": 200,
-            "max_depth": 5,
-            "learning_rate": 0.1,
-            "num_leaves": 31,
-            "subsample": 0.9,
-            "colsample_bytree": 0.9,
-            "reg_alpha": 0.1,
-            "reg_lambda": 0.1,
-            "random_state": 42,
-            "verbose": -1,
-        }
-        if lgb_num_threads is not None:
-            best_params = {**best_params, "num_threads": lgb_num_threads}
-
-        scaler = StandardScaler()
-
-        daily = daily_df.copy()
-        if "Date" in daily.columns:
-            _dt = pd.to_datetime(daily["Date"])
-            daily["Date"] = _dt.dt.tz_convert(None) if _dt.dt.tz is not None else _dt
-            daily.set_index("Date", inplace=True)
-        elif isinstance(daily.index, pd.DatetimeIndex) and daily.index.tz is not None:
-            daily.index = daily.index.tz_convert(None)
-        cols = {c: c.replace(" ", "_") for c in daily.columns if " " in c}
-        daily = daily.rename(columns=cols)
-
-        if forecast_days <= 5:
-            features = create_daily_features(daily, market_data=market_data, symbol=symbol)
-            min_rows = 60
-        elif forecast_days <= 15:
-            features = create_medium_features(daily, market_data=market_data, symbol=symbol)
-            min_rows = 100
-        else:
-            features = create_long_features(daily, market_data=market_data, symbol=symbol)
-            min_rows = 100
-
-        features = _impute_features(features)
-        data = create_daily_targets(features, forecast_days)
-        target_col = f"target_{forecast_days}d"
-
-        data = data.dropna()
-        if len(data) < min_rows:
-            return symbol, {"error": "Insufficient data"}
-
-        if include_research_features:
-            try:
-                research_feats = get_research_features_for_symbols([symbol])
-                data = append_research_features_to_data(data, symbol, research_feats)
-            except Exception:
-                pass
-
-        feature_columns = get_feature_columns(data, target_col)
-        X = data[feature_columns]
-        y = data[target_col]
-        X_scaled = scaler.fit_transform(X)
-        model = lgb.LGBMRegressor(**best_params)
-        model.fit(X_scaled, y)
-
-        last_row = features[feature_columns].iloc[-1:].copy()
-        if last_row.isnull().any().any():
-            last_known = features[feature_columns].ffill().iloc[-1]
-            last_row = last_row.fillna(last_known).fillna(0.0)
-        X_pred = scaler.transform(last_row)
-        pred_price = float(model.predict(X_pred)[0])
-        last_price = float(daily["Close"].iloc[-1])
-
-        mape = backtest_results.get(symbol, {}).get("mape", 10.0)
-        volatility = backtest_results.get(symbol, {}).get("volatility_pct", 20.0)
-
-        return symbol, {
-            "predictions": {1: pred_price},
-            "last_price": last_price,
-            "risk_rating": _mape_to_risk_rating(mape),
-            "volatility_pct": volatility,
-        }
-    except Exception as e:
-        return symbol, {"error": str(e)}
-
-
-def _merge_symbol_results_in_order(
-    ordered_symbols: list[str],
-    pairs: list[tuple[str, dict | None]],
-) -> dict:
-    """Build results dict in ``ordered_symbols`` order; skips missing keys."""
-    by_sym = {s: r for s, r in pairs}
-    out: dict = {}
-    for sym in ordered_symbols:
-        if sym not in by_sym:
-            continue
-        val = by_sym[sym]
-        if val is None:
-            continue
-        out[sym] = val
-    return out
-
-
 def run_backtest(
     stock_data: dict,
     forecast_horizon_weeks: int,
     forecast_days: int,
     include_research_features: bool = False,
     market_data: dict | None = None,
-    max_workers: int = 1,
-    lgb_num_threads: Optional[int] = None,
 ) -> dict:
     """
     Run backtesting with horizon-aware features.
@@ -442,22 +187,99 @@ def run_backtest(
       Long   (16–30d) : regime (MA200), 52-week levels, cyclic calendar + vol-regime
 
     All tiers include FOMC proximity and broad-market context (SPY/QQQ/VIX/yield).
-
-    ``max_workers`` and ``lgb_num_threads`` do not change window logic or targets;
-    default ``max_workers=1`` and ``lgb_num_threads=None`` match the original
-    sequential LightGBM defaults (simulation inputs unchanged).
     """
-    ordered_symbols = list(stock_data.keys())
-    args_list = [
-        (sym, stock_data[sym], forecast_days, include_research_features, market_data, lgb_num_threads)
-        for sym in ordered_symbols
-    ]
-    if max_workers <= 1:
-        pairs = [_run_backtest_single_symbol(*a) for a in args_list]
-    else:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            pairs = list(executor.map(_map_tuple_backtest, args_list))
-    return _merge_symbol_results_in_order(ordered_symbols, pairs)
+    results = {}
+    for symbol, daily_df in stock_data.items():
+        try:
+            daily = daily_df.copy()
+            if "Date" in daily.columns:
+                _dt = pd.to_datetime(daily["Date"])
+                daily["Date"] = _dt.dt.tz_convert(None) if _dt.dt.tz is not None else _dt
+                daily.set_index("Date", inplace=True)
+            elif isinstance(daily.index, pd.DatetimeIndex) and daily.index.tz is not None:
+                daily.index = daily.index.tz_convert(None)
+            cols = {c: c.replace(" ", "_") for c in daily.columns if " " in c}
+            daily = daily.rename(columns=cols)
+
+            # Select feature tier based on forecast horizon
+            if forecast_days <= 5:
+                features = create_daily_features(daily, market_data=market_data, symbol=symbol)
+                min_rows, train_cap, train_floor = 60, 260, 60
+            elif forecast_days <= 15:
+                features = create_medium_features(daily, market_data=market_data, symbol=symbol)
+                min_rows, train_cap, train_floor = 100, 300, 100
+            else:
+                features = create_long_features(daily, market_data=market_data, symbol=symbol)
+                # min_rows=100 reflects the 200-day MA min_periods=100 warm-up;
+                # train_floor is overridden adaptively below after we know n_rows.
+                min_rows, train_cap, train_floor = 100, 400, 100
+
+            # Impute NaN in new feature columns (market gaps, intraday lags)
+            # before adding the target so dropna() doesn't discard training rows.
+            features = _impute_features(features)
+
+            data = create_daily_targets(features, forecast_days)
+            target_col = f"target_{forecast_days}d"
+            returns = daily["Close"].pct_change().dropna()
+            periods = 252
+
+            data = data.dropna()
+            n_rows = len(data)
+            if n_rows < min_rows:
+                continue
+
+            # Optional: append research features (news sentiment, SEC, financials)
+            if include_research_features:
+                try:
+                    research_feats = get_research_features_for_symbols([symbol])
+                    data = append_research_features_to_data(data, symbol, research_feats)
+                except Exception:
+                    pass  # Fall back to price-only features if research fails
+
+            # For long horizons with limited data, adapt train_floor to n_rows
+            # so initial_train doesn't exceed available rows.
+            if forecast_days > 15:
+                train_floor = max(80, int(n_rows * 0.60))
+
+            initial_train = min(train_cap, max(train_floor, n_rows - forecast_days * 2))
+            min_train = min(train_floor, max(train_floor // 3, n_rows // 5))
+
+            feature_columns = get_feature_columns(data, target_col)
+
+            backtester = StandaloneBacktester(
+                initial_train_size=initial_train,
+                test_size=1,
+                # Non-overlapping windows: step forward by the full horizon so
+                # consecutive signals don't share target days.
+                step_size=forecast_days,
+                min_train_size=min_train,
+                target_column=target_col,
+                forecast_horizon=forecast_days,
+            )
+            bt_results = backtester.backtest(data, feature_columns=feature_columns)
+            metrics = bt_results["overall_metrics"]
+            volatility_annual = (
+                returns.std() * np.sqrt(periods) * 100 if len(returns) > 1 else 0.0
+            )
+
+            # Price series for trading simulation (same frequency as backtest)
+            price_series = data["Close"] if "Close" in data.columns else data.iloc[:, 0]
+
+            results[symbol] = {
+                "mape": metrics["mape"] * 100,
+                "rmse": metrics["rmse"],
+                "r2": metrics["r2"],
+                "windows": bt_results["total_windows"],
+                "predictions": bt_results["predictions"],
+                "actuals": bt_results["actuals"],
+                "dates": bt_results["dates"],
+                "volatility_pct": volatility_annual,
+                "forecast_days": forecast_days,
+                "price_series": price_series,
+            }
+        except Exception as e:
+            results[symbol] = {"error": str(e)}
+    return results
 
 
 def run_forecast(
@@ -467,8 +289,6 @@ def run_forecast(
     backtest_results: dict,
     include_research_features: bool = False,
     market_data: dict | None = None,
-    max_workers: int = 1,
-    lgb_num_threads: Optional[int] = None,
 ) -> dict:
     """
     Run forecast with horizon-aware features matching run_backtest tiers.
@@ -476,73 +296,108 @@ def run_forecast(
     Short (1–5d): daily volatility features.
     Medium (6–15d): technical indicators + momentum.
     Long (16–30d): regime, 52-week levels, cyclic calendar.
-
-    Defaults match the original sequential implementation (same simulation inputs).
     """
-    ordered_symbols = list(stock_data.keys())
-    args_list = [
-        (
-            sym,
-            stock_data[sym],
-            forecast_days,
-            backtest_results,
-            include_research_features,
-            market_data,
-            lgb_num_threads,
-        )
-        for sym in ordered_symbols
-    ]
-    if max_workers <= 1:
-        pairs = [_run_forecast_single_symbol(*a) for a in args_list]
-    else:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            pairs = list(executor.map(_map_tuple_forecast, args_list))
-    by_sym = {s: r for s, r in pairs}
-    return {sym: by_sym[sym] for sym in ordered_symbols if sym in by_sym}
+    import lightgbm as lgb
+    from sklearn.preprocessing import StandardScaler
 
+    best_params = {
+        "n_estimators": 200,
+        "max_depth": 5,
+        "learning_rate": 0.1,
+        "num_leaves": 31,
+        "subsample": 0.9,
+        "colsample_bytree": 0.9,
+        "reg_alpha": 0.1,
+        "reg_lambda": 0.1,
+        "random_state": 42,
+        "verbose": -1,
+    }
+    scaler = StandardScaler()
 
-@st.cache_data(ttl=300)
-def compute_forecast_pipeline_cached(
-    symbols: tuple,
-    start_date: str,
-    end_date: str,
-    forecast_days: int,
-    forecast_weeks: int,
-    include_research: bool,
-    max_workers: int,
-    lgb_threads_ui: int,
-) -> tuple[Optional[dict], Optional[dict]]:
-    """
-    Cached backtest + forecast for identical inputs (repeated runs skip recompute).
+    results = {}
+    for symbol, daily_df in stock_data.items():
+        try:
+            daily = daily_df.copy()
+            if "Date" in daily.columns:
+                _dt = pd.to_datetime(daily["Date"])
+                daily["Date"] = _dt.dt.tz_convert(None) if _dt.dt.tz is not None else _dt
+                daily.set_index("Date", inplace=True)
+            elif isinstance(daily.index, pd.DatetimeIndex) and daily.index.tz is not None:
+                daily.index = daily.index.tz_convert(None)
+            cols = {c: c.replace(" ", "_") for c in daily.columns if " " in c}
+            daily = daily.rename(columns=cols)
 
-    Does not alter ``predictions`` / ``actuals`` / ``dates`` / ``price_series``
-    passed to ``run_multi_stock_simulation`` vs an uncached run with the same data.
-    """
-    lgb_nt = _effective_lgb_num_threads(max_workers, lgb_threads_ui)
-    stock_data = download_stock_data(symbols, start_date, end_date)
-    if not stock_data:
-        return None, None
-    market_data = load_market_reference_data(start_date, end_date)
-    backtest_results = run_backtest(
-        stock_data,
-        forecast_weeks,
-        forecast_days,
-        include_research,
-        market_data=market_data,
-        max_workers=max_workers,
-        lgb_num_threads=lgb_nt,
-    )
-    forecast_results = run_forecast(
-        stock_data,
-        forecast_weeks,
-        forecast_days,
-        backtest_results,
-        include_research,
-        market_data=market_data,
-        max_workers=max_workers,
-        lgb_num_threads=lgb_nt,
-    )
-    return backtest_results, forecast_results
+            # Match the same feature tier used in run_backtest
+            if forecast_days <= 5:
+                features = create_daily_features(daily, market_data=market_data, symbol=symbol)
+                min_rows = 60
+            elif forecast_days <= 15:
+                features = create_medium_features(daily, market_data=market_data, symbol=symbol)
+                min_rows = 100
+            else:
+                features = create_long_features(daily, market_data=market_data, symbol=symbol)
+                # 100 matches the 200-day MA min_periods=100 warm-up; forecasting
+                # does not need a fixed 200-row minimum like the backtester does.
+                min_rows = 100
+
+            # Impute NaN in new feature columns before adding target.
+            features = _impute_features(features)
+
+            data = create_daily_targets(features, forecast_days)
+            target_col = f"target_{forecast_days}d"
+
+            data = data.dropna()
+            if len(data) < min_rows:
+                results[symbol] = {"error": "Insufficient data"}
+                continue
+
+            # Optional: append research features (news sentiment, SEC, financials)
+            if include_research_features:
+                try:
+                    research_feats = get_research_features_for_symbols([symbol])
+                    data = append_research_features_to_data(data, symbol, research_feats)
+                except Exception:
+                    pass  # Fall back to price-only features if research fails
+
+            feature_columns = get_feature_columns(data, target_col)
+
+            X = data[feature_columns]
+            y = data[target_col]
+            X_scaled = scaler.fit_transform(X)
+            model = lgb.LGBMRegressor(**best_params)
+            model.fit(X_scaled, y)
+
+            # Use the most recent row from `features` (before target was appended)
+            # so the prediction is anchored to TODAY, not to `forecast_days` ago.
+            # data.iloc[-1] would be forecast_days old because dropna() removes the
+            # last `forecast_days` rows whose target is still NaN (future not yet known).
+            #
+            # The most recent row may still have NaN after _impute_features if market
+            # data (SPY/VIX/yield) wasn't yet available for today's date. Fill any
+            # residual NaN with column medians from the training data so the model
+            # always receives a complete feature vector.
+            last_row = features[feature_columns].iloc[-1:].copy()
+            if last_row.isnull().any().any():
+                # Fill with the last known value from the training window,
+                # then fall back to 0 for any column that is entirely missing.
+                last_known = features[feature_columns].ffill().iloc[-1]
+                last_row = last_row.fillna(last_known).fillna(0.0)
+            X_pred = scaler.transform(last_row)
+            pred_price = float(model.predict(X_pred)[0])
+            last_price = float(daily["Close"].iloc[-1])
+
+            mape = backtest_results.get(symbol, {}).get("mape", 10.0)
+            volatility = backtest_results.get(symbol, {}).get("volatility_pct", 20.0)
+
+            results[symbol] = {
+                "predictions": {1: pred_price},
+                "last_price": last_price,
+                "risk_rating": _mape_to_risk_rating(mape),
+                "volatility_pct": volatility,
+            }
+        except Exception as e:
+            results[symbol] = {"error": str(e)}
+    return results
 
 
 def _mape_to_risk_rating(mape: float) -> str:
@@ -591,43 +446,6 @@ def main():
             value=False,
             help="Add news sentiment, earnings, and financial metrics as LGBM features. May be slow or unstable on some systems.",
         )
-
-        _workers_max = _parallel_workers_slider_max()
-        with st.expander("⚡ Performance (forecast & backtest only)", expanded=True):
-            parallel_workers = st.slider(
-                "Parallel stock workers",
-                min_value=1,
-                max_value=_workers_max,
-                value=1,
-                key="sf_parallel_workers",
-                help=(
-                    "Runs one ticker per worker (ThreadPoolExecutor). Best when you select "
-                    "multiple stocks; a single stock still uses one worker. Does not change "
-                    "simulation inputs. If this was stuck at 1 before, your OS reported "
-                    "very few CPUs — the slider now allows up to 32. "
-                    "Repeated identical runs use the cache (see below)."
-                ),
-            )
-            lgb_threads_ui = st.number_input(
-                "LightGBM threads per fit (0 = auto)",
-                min_value=0,
-                max_value=32,
-                value=0,
-                key="sf_lgb_threads_ui",
-                help=(
-                    "0: auto — no num_threads when workers=1; 1 thread per model when "
-                    "workers>1 to limit CPU oversubscription. Set >0 to override."
-                ),
-            )
-            st.caption(
-                "Cache: same symbols, dates, horizon, research, and worker settings "
-                "reuse the last result for ~5 minutes (instant rerun)."
-            )
-            if st.session_state.get("sf_last_run_workers") is not None:
-                st.caption(
-                    f"Last completed run used **{st.session_state['sf_last_run_workers']}** "
-                    f"parallel worker(s), LGBM UI threads={st.session_state.get('sf_last_run_lgb_threads', 0)}."
-                )
 
         with st.expander("⚙️ Simulation Settings"):
             sim_threshold_pct = st.slider(
@@ -685,23 +503,21 @@ def main():
                 st.error("Failed to download data. Check your connection.")
                 return
 
-            # Backtest + forecast (cached; loads market reference data inside cache).
-            backtest_results, forecast_results = compute_forecast_pipeline_cached(
-                tuple(selected_stocks),
+            # Download market reference data (SPY, QQQ, VIX, 10Y yield) once
+            # and share across all per-stock feature pipelines.
+            market_data = load_market_reference_data(
                 start_date.strftime("%Y-%m-%d"),
                 end_date.strftime("%Y-%m-%d"),
-                forecast_days,
-                forecast_weeks,
-                include_research_features,
-                parallel_workers,
-                int(lgb_threads_ui),
             )
-            if backtest_results is None or forecast_results is None:
-                st.error("Failed to download data. Check your connection.")
-                return
 
-            st.session_state["sf_last_run_workers"] = parallel_workers
-            st.session_state["sf_last_run_lgb_threads"] = int(lgb_threads_ui)
+            backtest_results = run_backtest(
+                stock_data, forecast_weeks, forecast_days,
+                include_research_features, market_data=market_data,
+            )
+            forecast_results = run_forecast(
+                stock_data, forecast_weeks, forecast_days, backtest_results,
+                include_research_features, market_data=market_data,
+            )
 
         # Trading simulation: 100k total, split equally across stocks
         initial_cash_total = 100_000.0
@@ -965,8 +781,7 @@ def main():
                             "Forecast": r["predictions"],
                         }, index=pd.DatetimeIndex(r["dates"]))
                         bt_df.index.name = "Date"
-                        chart_df = _downsample_for_line_chart(bt_df)
-                        st.line_chart(chart_df, use_container_width=True)
+                        st.line_chart(bt_df, use_container_width=True)
                         st.caption("Backtest predictions vs actual close price (weekly)")
             else:
                 st.info("No backtest data available.")
@@ -1166,10 +981,7 @@ Capital of ${initial_cash_total:,.0f} is split equally across selected stocks.
                     with tab:
                         eq_df = res.equity_curve.to_frame(name="Portfolio Value ($)")
                         eq_df.index.name = "Date"
-                        st.line_chart(
-                            _downsample_for_line_chart(eq_df),
-                            use_container_width=True,
-                        )
+                        st.line_chart(eq_df, use_container_width=True)
             else:
                 st.info("No simulation results available.")
 
@@ -1188,7 +1000,7 @@ Capital of ${initial_cash_total:,.0f} is split equally across selected stocks.
             if chart_dfs:
                 chart_data = pd.concat(chart_dfs, axis=1).dropna(how="all")
                 if not chart_data.empty:
-                    st.line_chart(_downsample_for_line_chart(chart_data))
+                    st.line_chart(chart_data)
             else:
                 st.info("No historical price data available.")
 

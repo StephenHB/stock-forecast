@@ -41,8 +41,7 @@ class StandaloneBacktester:
         step_size: int = 1,  # Move forward 1 quarter each iteration
         min_train_size: int = 6,  # Minimum 1.5 years of training data
         target_column: str = 'Close',
-        forecast_horizon: int = 1,  # 1 quarter ahead
-        lgb_num_threads: Optional[int] = None,
+        forecast_horizon: int = 1  # 1 quarter ahead
     ):
         """
         Initialize the standalone backtester.
@@ -54,8 +53,6 @@ class StandaloneBacktester:
             min_train_size: Minimum training window size (quarters)
             target_column: Name of the target column
             forecast_horizon: Number of quarters to forecast ahead
-            lgb_num_threads: If set, passed to LightGBM as ``num_threads`` (e.g. 1 when
-                fitting many models in parallel to avoid CPU oversubscription).
         """
         self.initial_train_size = initial_train_size
         self.test_size = test_size
@@ -77,9 +74,7 @@ class StandaloneBacktester:
             'random_state': 42,
             'verbose': -1
         }
-        if lgb_num_threads is not None:
-            self.best_params = {**self.best_params, 'num_threads': lgb_num_threads}
-
+        
         self.scaler = StandardScaler()
         self.results = []
         
