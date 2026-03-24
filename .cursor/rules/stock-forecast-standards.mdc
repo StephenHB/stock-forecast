@@ -40,6 +40,12 @@ tests/                 → unit tests
 
 Multi-step or cross-domain work (forecasting, UI, tests, git in one effort) should use **`.cursor/skills/agent-manager/`**: clarify ambiguous requirements with the user, plan execution, then delegate to specialist skills (`stock-forecast-analysis`, `ui-agent`, `testing-agent`, `git-agent` as appropriate). See `SKILL.md` in that folder.
 
+## Git workflow
+
+- **Do not commit or edit project code directly on `main`**. `main` is for merged, reviewed work only.
+- **Use a feature branch** for any code changes: sync `main` (`git pull`), then `git checkout -b <descriptive-branch-name>` before editing.
+- Details (commit style, tests before push, PRs): `.cursor/skills/git-agent/`.
+
 ## Agent & Safety Conventions
 
 - **Secrets**: Never commit API keys, tokens, or real credentials. Use environment variables (e.g. `STOCK_DATA_DIR`, `.env` gitignored); do not paste secrets into chat or code.
