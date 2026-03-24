@@ -178,6 +178,25 @@ def _impute_features(df: pd.DataFrame) -> pd.DataFrame:
 BACKTEST_CHART_MAX_POINTS = 500
 
 
+def _parallel_workers_slider_max() -> int:
+    """
+    Upper bound for the parallel-workers slider.
+
+    Do not use ``min(8, os.cpu_count())`` alone: when ``cpu_count()`` is 1 (common in
+    containers/VMs), the slider max would be 1 and parallel runs could never be selected.
+    """
+    n = os.cpu_count() or 4
+    return max(8, min(32, n * 2))
+
+
+def _map_tuple_backtest(args):
+    return _run_backtest_single_symbol(*args)
+
+
+def _map_tuple_forecast(args):
+    return _run_forecast_single_symbol(*args)
+
+
 def _effective_lgb_num_threads(max_workers: int, user_threads: int) -> Optional[int]:
     """
     Map UI settings to LightGBM ``num_threads``.
@@ -437,7 +456,7 @@ def run_backtest(
         pairs = [_run_backtest_single_symbol(*a) for a in args_list]
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            pairs = list(executor.map(lambda a: _run_backtest_single_symbol(*a), args_list))
+            pairs = list(executor.map(_map_tuple_backtest, args_list))
     return _merge_symbol_results_in_order(ordered_symbols, pairs)
 
 
@@ -477,7 +496,7 @@ def run_forecast(
         pairs = [_run_forecast_single_symbol(*a) for a in args_list]
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            pairs = list(executor.map(lambda a: _run_forecast_single_symbol(*a), args_list))
+            pairs = list(executor.map(_map_tuple_forecast, args_list))
     by_sym = {s: r for s, r in pairs}
     return {sym: by_sym[sym] for sym in ordered_symbols if sym in by_sym}
 
@@ -573,17 +592,20 @@ def main():
             help="Add news sentiment, earnings, and financial metrics as LGBM features. May be slow or unstable on some systems.",
         )
 
-        _cpu_default = max(1, min(8, (os.cpu_count() or 4)))
-        with st.expander("⚡ Performance (forecast & backtest only)", expanded=False):
+        _workers_max = _parallel_workers_slider_max()
+        with st.expander("⚡ Performance (forecast & backtest only)", expanded=True):
             parallel_workers = st.slider(
                 "Parallel stock workers",
                 min_value=1,
-                max_value=_cpu_default,
+                max_value=_workers_max,
                 value=1,
+                key="sf_parallel_workers",
                 help=(
-                    "Run each ticker’s backtest/forecast in parallel. Does not change "
-                    "model math or trading simulation inputs — same results as sequential "
-                    "when workers=1. Increase for multi-stock runs on multi-core CPUs."
+                    "Runs one ticker per worker (ThreadPoolExecutor). Best when you select "
+                    "multiple stocks; a single stock still uses one worker. Does not change "
+                    "simulation inputs. If this was stuck at 1 before, your OS reported "
+                    "very few CPUs — the slider now allows up to 32. "
+                    "Repeated identical runs use the cache (see below)."
                 ),
             )
             lgb_threads_ui = st.number_input(
@@ -591,11 +613,21 @@ def main():
                 min_value=0,
                 max_value=32,
                 value=0,
+                key="sf_lgb_threads_ui",
                 help=(
-                    "0: auto — library default when workers=1; 1 thread per model when "
+                    "0: auto — no num_threads when workers=1; 1 thread per model when "
                     "workers>1 to limit CPU oversubscription. Set >0 to override."
                 ),
             )
+            st.caption(
+                "Cache: same symbols, dates, horizon, research, and worker settings "
+                "reuse the last result for ~5 minutes (instant rerun)."
+            )
+            if st.session_state.get("sf_last_run_workers") is not None:
+                st.caption(
+                    f"Last completed run used **{st.session_state['sf_last_run_workers']}** "
+                    f"parallel worker(s), LGBM UI threads={st.session_state.get('sf_last_run_lgb_threads', 0)}."
+                )
 
         with st.expander("⚙️ Simulation Settings"):
             sim_threshold_pct = st.slider(
@@ -667,6 +699,9 @@ def main():
             if backtest_results is None or forecast_results is None:
                 st.error("Failed to download data. Check your connection.")
                 return
+
+            st.session_state["sf_last_run_workers"] = parallel_workers
+            st.session_state["sf_last_run_lgb_threads"] = int(lgb_threads_ui)
 
         # Trading simulation: 100k total, split equally across stocks
         initial_cash_total = 100_000.0
