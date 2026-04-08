@@ -10,6 +10,7 @@ A comprehensive stock forecasting system with machine learning models for analyz
 - **Intraday Price Dynamics**: Open-close diff, overnight gap, candlestick shadows, and volume-spike features specifically tuned for 1-day forecasts
 - **FOMC Proximity Features**: Days-to/since Federal Reserve announcement, pre/post-meeting window flags (2022–2027 dates); all horizons
 - **Market-Wide Context**: SPY/QQQ return, VIX level/change/regime, and 10-Year Treasury yield merged as features for every stock — automatically skipped when forecasting SPY or QQQ themselves
+- **Adaptive Hyperparameter Tuning**: At each backtest window, `HalvingRandomSearchCV` searches 30 candidates using Successive Halving (cheap first screen → promote survivors) on a fixed 1-lag-back validation split; tuning runs every 7 windows and the best structural params are applied to the final model (n_estimators=100). ~20× faster than the original fixed-param design
 - **LGBM 2-Stage**: Prophet or MA trend/seasonality + LightGBM; all horizons use daily OHLCV data
 - **Trading Simulation**: $100k simulation with 5 research-driven enhancements — implied-return signal, dead-zone threshold, proportional position sizing, transaction cost model, and 200-day MA regime filter; user-adjustable parameters
 - **Capital Market Research**: News sentiment (FinBERT or keyword), SEC filings (10-K, 10-Q, 8-K), impact features; optional LGBM input via sidebar checkbox
@@ -32,6 +33,7 @@ stock-forecast/
 │   │   ├── feature_factory.py    # Daily/weekly features + trend/seasonality
 │   │   ├── trend_seasonality.py  # Prophet or MA for LGBM 2-stage
 │   │   ├── standalone_backtester.py
+│   │   ├── lgbm_tuner.py         # HalvingRandomSearchCV adaptive tuning (1-lag-back window)
 │   │   ├── trading_simulator.py
 │   │   ├── feature_importance.py  # SHAP, permutation importance
 │   │   └── research_features.py  # News/report feature integration
@@ -268,8 +270,8 @@ Features are tiered by forecast horizon. All tiers operate on **daily OHLCV data
 
 Key dependencies:
 - `pandas`, `numpy`: Data manipulation
-- `yfinance`: Yahoo Finance API
-- `lightgbm`, `scikit-learn`: Forecasting
+- `yfinance`: Yahoo Finance API (with 3-attempt exponential backoff on transient 403 errors)
+- `lightgbm`, `scikit-learn`: Forecasting + `HalvingRandomSearchCV` for adaptive tuning
 - `streamlit`: Interactive UI
 - `pyyaml`: Configuration
 

@@ -7,6 +7,7 @@ Interactive UI for:
 - Viewing backtesting results (sidebar, default 2 years)
 """
 
+import warnings
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -41,6 +42,7 @@ from src.forecasting.research_features import (
     append_research_features_to_data,
 )
 from src.feature_engineering.market_features import download_market_reference_data
+from src.forecasting.lgbm_tuner import tune_lgbm_params, build_lag_back_splits, DEFAULT_PARAMS
 
 # Page config
 st.set_page_config(page_title="Stock Forecast", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
@@ -255,6 +257,14 @@ def run_backtest(
                 min_train_size=min_train,
                 target_column=target_col,
                 forecast_horizon=forecast_days,
+                # Adaptive tuning: at each window the 1-lag-back split
+                # (the forecast_horizon rows before the test window) is used
+                # as the validation set for a fast random hyperparameter search.
+                # tune_every_n=5 — re-tune only every 5th window and reuse
+                # cached params in between (major speed win with minimal loss).
+                tune_hyperparams=True,
+                n_tune_iter=10,
+                tune_every_n=7,
             )
             bt_results = backtester.backtest(data, feature_columns=feature_columns)
             metrics = bt_results["overall_metrics"]
@@ -300,18 +310,6 @@ def run_forecast(
     import lightgbm as lgb
     from sklearn.preprocessing import StandardScaler
 
-    best_params = {
-        "n_estimators": 200,
-        "max_depth": 5,
-        "learning_rate": 0.1,
-        "num_leaves": 31,
-        "subsample": 0.9,
-        "colsample_bytree": 0.9,
-        "reg_alpha": 0.1,
-        "reg_lambda": 0.1,
-        "random_state": 42,
-        "verbose": -1,
-    }
     scaler = StandardScaler()
 
     results = {}
@@ -361,11 +359,35 @@ def run_forecast(
 
             feature_columns = get_feature_columns(data, target_col)
 
-            X = data[feature_columns]
-            y = data[target_col]
+            X = data[feature_columns].values
+            y = data[target_col].values
             X_scaled = scaler.fit_transform(X)
-            model = lgb.LGBMRegressor(**best_params)
-            model.fit(X_scaled, y)
+
+            # ── Adaptive hyperparameter tuning (1-lag-back window) ──────────
+            # The forecast_horizon rows immediately before the current unknown
+            # window act as the validation set. Tuning on recent data picks
+            # params that suit the current market regime.
+            forecast_params = DEFAULT_PARAMS.copy()
+            splits = build_lag_back_splits(X_scaled, y, forecast_days)
+            if splits is not None:
+                Xtt, ytt, Xtv, ytv = splits
+                forecast_params = tune_lgbm_params(Xtt, ytt, Xtv, ytv, n_iter=10)
+
+            # Suppress LightGBM 4.x / sklearn compatibility noise (auto-assigned
+            # feature names on numpy fit trigger warnings on every predict call).
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="X does not have valid feature names",
+                    category=UserWarning,
+                )
+                warnings.filterwarnings(
+                    "ignore",
+                    message="X has feature names",
+                    category=UserWarning,
+                )
+                model = lgb.LGBMRegressor(**forecast_params)
+                model.fit(X_scaled, y)
 
             # Use the most recent row from `features` (before target was appended)
             # so the prediction is anchored to TODAY, not to `forecast_days` ago.
@@ -382,8 +404,14 @@ def run_forecast(
                 # then fall back to 0 for any column that is entirely missing.
                 last_known = features[feature_columns].ffill().iloc[-1]
                 last_row = last_row.fillna(last_known).fillna(0.0)
-            X_pred = scaler.transform(last_row)
-            pred_price = float(model.predict(X_pred)[0])
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="X does not have valid feature names",
+                    category=UserWarning,
+                )
+                X_pred = scaler.transform(last_row.values)
+                pred_price = float(model.predict(X_pred)[0])
             last_price = float(daily["Close"].iloc[-1])
 
             mape = backtest_results.get(symbol, {}).get("mape", 10.0)
@@ -941,9 +969,9 @@ Capital of ${initial_cash_total:,.0f} is split equally across selected stocks.
                         "Final Value ($)": f"${res.final_value:,.0f}",
                         "Forecast Trade (%)": f"{res.total_return_pct:+.1f}%",
                         "Buy & Hold (%)": f"{buy_hold_pct:+.1f}%",
-                        "Buys": res.n_buys,
-                        "Sells": res.n_sells,
-                        "Holds": res.n_holds,
+                        "Buys": str(res.n_buys),
+                        "Sells": str(res.n_sells),
+                        "Holds": str(res.n_holds),
                         "Costs ($)": f"${res.total_cost_paid:,.0f}",
                     })
                 sim_rows.append({

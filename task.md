@@ -91,6 +91,55 @@ When forecast horizon <= 5 days, the app now uses:
 - [x] Updated task.md with this task log
 - [ ] PR: Merge `feature/sp500-stocks` → `main`
 
+## Adaptive Hyperparameter Tuning (model-tuning)
+
+- [x] Create branch `model-tuning`
+- [x] Create `src/forecasting/lgbm_tuner.py`:
+  - `PARAM_GRID`: 5 LGBM params (`max_depth`, `learning_rate`, `num_leaves`, `subsample`, `colsample_bytree`); `n_estimators` fixed at 200 for fast evaluation
+  - `tune_lgbm_params(X_tune_train, y, X_tune_val, y, n_iter=20)`: random search, returns best param dict; falls back to `DEFAULT_PARAMS` if data too small
+  - `build_lag_back_splits(X, y, forecast_horizon)`: slices the 1-lag-back validation window — val = rows `[-2H:-H]`, train = rows `[:-2H]`; returns `None` if `n < 3H`
+- [x] Update `StandaloneBacktester`:
+  - New params: `tune_hyperparams=False`, `n_tune_iter=20`
+  - At each rolling window: calls `build_lag_back_splits` on the training block, then `tune_lgbm_params`; falls back to defaults when splits are too small
+  - Records `params_used` in each window result
+- [x] Update `run_backtest` in `app.py`: pass `tune_hyperparams=True, n_tune_iter=20` to `StandaloneBacktester`
+- [x] Update `run_forecast` in `app.py`: replace fixed `best_params` dict with adaptive tuning via `build_lag_back_splits` + `tune_lgbm_params`; falls back to `DEFAULT_PARAMS` when data is too small for a 3-split
+
+## Tuning Speed Optimisation & Bug Fixes (model-tuning)
+
+### Terminal noise / sklearn-LightGBM compatibility warnings
+- [x] Suppress `UserWarning: X does not have valid feature names, but LGBMRegressor was fitted with feature names` — LightGBM 4.x auto-assigns column names even for numpy inputs; wrapped all `model.fit` / `model.predict` / tuner loops in `warnings.catch_warnings()` blocks in `lgbm_tuner.py`, `standalone_backtester.py`, and `app.py`
+- [x] Fix `scaler.transform(last_row)` in `run_forecast` — `last_row` was a DataFrame but scaler was fitted on numpy; changed to `scaler.transform(last_row.values)` to suppress "X has feature names, but StandardScaler was fitted without feature names"
+
+### PyArrow simulation table crash
+- [x] Fix `ArrowInvalid: Could not convert '—' with type str: tried to convert to int64` — simulation Total row used em-dash strings for `Buys/Sells/Holds` while regular rows used integers; PyArrow inferred int64 then failed on the dash; changed regular-row counts to `str(res.n_buys)` etc. for a consistent object column
+
+### Successive Halving hyperparameter search (`lgbm_tuner.py`)
+- [x] Replace manual random-search loop with `sklearn.model_selection.HalvingRandomSearchCV`:
+  - `resource="n_estimators"`: halving varies tree budget across rounds (10 → 30 → 50) rather than always training to full budget
+  - `PredefinedSplit`: pins the 1-lag-back validation split verbatim; zero extra CV fold overhead
+  - `n_candidates = n_iter * 3 = 30`: start wider (3× more candidates) for same or lower total tree-build cost
+  - `factor=3`, `min_resources=10`, `max_resources=50`
+  - Add `from sklearn.experimental import enable_halving_search_cv` (required unlock import)
+- [x] Reduce final model `_FIXED_FINAL["n_estimators"]`: 200 → 100 — halves the dominant cost (48 final-model fits per backtest run are 4× more expensive than tuning windows)
+- [x] Remove manual early-stopping loop (superseded by halving's built-in candidate elimination)
+
+### Tuning frequency & budget controls (`standalone_backtester.py`, `app.py`)
+- [x] Add `tune_every_n=7` param to `StandaloneBacktester` — re-run halving search only every 7th window; cached winning params reused for the 6 windows in between
+- [x] Reduce `n_tune_iter`: 20 → 10 in both `run_backtest` and `run_forecast`
+- [x] Update `run_backtest` in `app.py`: `tune_every_n=7`, `n_tune_iter=10`
+
+**Combined speedup** (per stock, 48-window backtest):
+
+| Phase | Before | After |
+|---|---|---|
+| Tuning | 48 × 20 × 200 = 192,000 tree-builds | 7 × 750 = 5,250 |
+| Final models | 48 × 200 = 9,600 | 48 × 100 = 4,800 |
+| **Total** | **201,600** | **10,050** (~**20×** faster) |
+
+### Data download resilience (`stock_data_loader.py`)
+- [x] Add 3-attempt exponential backoff (2s → 4s → 8s) to `_download_single_stock` — handles transient Yahoo Finance 403 rate-limit errors that previously caused immediate "Failed to download data" failures
+
 ## Trading Simulation Strategy Review (review-trading-simulation-strategy)
 
 - [x] Create branch `review-trading-simulation-strategy`

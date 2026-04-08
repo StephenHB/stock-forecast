@@ -2,13 +2,16 @@
 Standalone Time Series Backtesting Module
 
 This module provides a simplified backtesting framework that:
-1. Uses pre-optimized hyperparameters (no tuning required)
+1. Supports optional adaptive hyperparameter tuning at every window using the
+   "1-lag-back" strategy: the forecast_horizon rows immediately preceding the
+   current test window serve as the validation set for a fast random search.
 2. Works independently of the forecasting pipeline
 3. Focuses on performance evaluation with full sample data
 """
 
 import pandas as pd
 import numpy as np
+import warnings
 from typing import Dict, Any, List, Optional, Tuple
 import logging
 from datetime import datetime
@@ -20,39 +23,56 @@ try:
 except ImportError as e:
     raise ImportError(f"Required packages not installed: {e}") from e
 
+from src.forecasting.lgbm_tuner import (
+    tune_lgbm_params,
+    build_lag_back_splits,
+    DEFAULT_PARAMS,
+)
+
 logger = logging.getLogger(__name__)
 
 
 class StandaloneBacktester:
     """
     Standalone backtesting framework for time series forecasting.
-    
+
     Features:
-    - Uses pre-optimized hyperparameters (no tuning)
+    - Optional adaptive hyperparameter tuning at every window using the
+      1-lag-back strategy (tune_hyperparams=True)
     - Works with full sample data
     - Independent of forecasting pipeline
     - Focuses on performance evaluation
     """
-    
+
     def __init__(
         self,
-        initial_train_size: int = 13,  # 1 year of quarterly data
-        test_size: int = 1,  # 1 quarter ahead
-        step_size: int = 1,  # Move forward 1 quarter each iteration
-        min_train_size: int = 6,  # Minimum 1.5 years of training data
-        target_column: str = 'Close',
-        forecast_horizon: int = 1  # 1 quarter ahead
+        initial_train_size: int = 13,
+        test_size: int = 1,
+        step_size: int = 1,
+        min_train_size: int = 6,
+        target_column: str = "Close",
+        forecast_horizon: int = 1,
+        tune_hyperparams: bool = False,
+        n_tune_iter: int = 10,
+        tune_every_n: int = 5,
     ):
         """
         Initialize the standalone backtester.
-        
+
         Args:
-            initial_train_size: Initial training window size (quarters)
-            test_size: Test window size (quarters)
-            step_size: Step size for moving window (quarters)
-            min_train_size: Minimum training window size (quarters)
+            initial_train_size: Initial training window size (rows)
+            test_size: Test window size (rows)
+            step_size: Step size for moving window (rows)
+            min_train_size: Minimum training window size (rows)
             target_column: Name of the target column
-            forecast_horizon: Number of quarters to forecast ahead
+            forecast_horizon: Number of periods to forecast ahead
+            tune_hyperparams: If True, run adaptive random-search tuning at
+                each window using the 1-lag-back validation split.
+            n_tune_iter: Number of random candidates to evaluate per tuning
+                window (default 10).
+            tune_every_n: Re-run hyperparameter search only once every this
+                many windows; cached params are reused in between (default 5).
+                Set to 1 to tune at every window (original behaviour).
         """
         self.initial_train_size = initial_train_size
         self.test_size = test_size
@@ -60,21 +80,13 @@ class StandaloneBacktester:
         self.min_train_size = min_train_size
         self.target_column = target_column
         self.forecast_horizon = forecast_horizon
-        
-        # Pre-optimized hyperparameters (based on typical stock forecasting performance)
-        self.best_params = {
-            'n_estimators': 200,
-            'max_depth': 5,
-            'learning_rate': 0.1,
-            'num_leaves': 31,
-            'subsample': 0.9,
-            'colsample_bytree': 0.9,
-            'reg_alpha': 0.1,
-            'reg_lambda': 0.1,
-            'random_state': 42,
-            'verbose': -1
-        }
-        
+        self.tune_hyperparams = tune_hyperparams
+        self.n_tune_iter = n_tune_iter
+        self.tune_every_n = tune_every_n
+
+        # Fallback hyperparameters used when tuning is disabled or skipped
+        self.best_params = DEFAULT_PARAMS.copy()
+
         self.scaler = StandardScaler()
         self.results = []
         
@@ -120,60 +132,90 @@ class StandaloneBacktester:
         
         for i, (train_start, train_end, test_start, test_end) in enumerate(windows):
             logger.info(f"Backtest iteration {i+1}/{len(windows)}")
-            
+
             # Split data
             train_data = data.iloc[train_start:train_end]
-            test_data = data.iloc[test_start:test_end]
-            
+            test_data  = data.iloc[test_start:test_end]
+
             # Prepare features and targets
-            X_train = train_data[feature_columns]
+            X_train = train_data[feature_columns].values
             y_train = train_data[self.target_column]
-            X_test = test_data[feature_columns]
-            y_test = test_data[self.target_column]
-            
-            # Ensure targets are Series
+            X_test  = test_data[feature_columns].values
+            y_test  = test_data[self.target_column]
+
             if isinstance(y_train, pd.DataFrame):
                 y_train = y_train.iloc[:, 0]
             if isinstance(y_test, pd.DataFrame):
                 y_test = y_test.iloc[:, 0]
-            
-            # Scale features
+
+            y_train_arr = y_train.values
+            y_test_arr  = y_test.values
+
+            # Scale features (fit on training data only)
             X_train_scaled = self.scaler.fit_transform(X_train)
-            X_test_scaled = self.scaler.transform(X_test)
-            
-            # Train model with pre-optimized parameters
-            model = lgb.LGBMRegressor(**self.best_params)
-            model.fit(
-                X_train_scaled, 
-                y_train,
-                eval_set=[(X_test_scaled, y_test)],
-                callbacks=[lgb.early_stopping(50, verbose=False)]
-            )
-            
+            X_test_scaled  = self.scaler.transform(X_test)
+
+            # ── Adaptive hyperparameter tuning (1-lag-back window) ────────────
+            # Tune only on windows 0, tune_every_n, 2*tune_every_n, …
+            # Intermediate windows reuse the most recently tuned params, which
+            # is safe because market regime rarely changes dramatically within
+            # a few steps.  This is the single biggest speed lever.
+            window_params = self.best_params
+            if self.tune_hyperparams and (i % self.tune_every_n == 0):
+                splits = build_lag_back_splits(
+                    X_train_scaled, y_train_arr, self.forecast_horizon
+                )
+                if splits is not None:
+                    Xtt, ytt, Xtv, ytv = splits
+                    window_params = tune_lgbm_params(
+                        Xtt, ytt, Xtv, ytv, n_iter=self.n_tune_iter
+                    )
+                    # Cache so intermediate windows can reuse without re-tuning
+                    self.best_params = window_params
+
+            # Train model with (tuned or default) parameters
+            # Suppress the LightGBM 4.x / sklearn compatibility warning that fires
+            # when predicting with numpy after LightGBM auto-assigns feature names.
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="X does not have valid feature names",
+                    category=UserWarning,
+                )
+                model = lgb.LGBMRegressor(**window_params)
+                model.fit(X_train_scaled, y_train_arr)
+
             # Make predictions
-            predictions = model.predict(X_test_scaled)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="X does not have valid feature names",
+                    category=UserWarning,
+                )
+                predictions = model.predict(X_test_scaled)
             
             # Store results
             all_predictions.extend(predictions)
-            all_actuals.extend(y_test.values)
+            all_actuals.extend(y_test_arr)
             all_dates.extend(test_data.index.tolist())
-            
+
             # Calculate metrics for this window
-            mape = mean_absolute_percentage_error(y_test, predictions)
-            mse = mean_squared_error(y_test, predictions)
-            r2 = r2_score(y_test, predictions)
-            
+            mape = mean_absolute_percentage_error(y_test_arr, predictions)
+            mse  = mean_squared_error(y_test_arr, predictions)
+            r2   = r2_score(y_test_arr, predictions)
+
             self.results.append({
-                'window': i + 1,
-                'train_start': train_data.index[0],
-                'train_end': train_data.index[-1],
-                'test_start': test_data.index[0],
-                'test_end': test_data.index[-1],
-                'mape': mape,
-                'mse': mse,
-                'r2': r2,
-                'predictions': predictions.tolist(),
-                'actuals': y_test.values.tolist()
+                "window":      i + 1,
+                "train_start": train_data.index[0],
+                "train_end":   train_data.index[-1],
+                "test_start":  test_data.index[0],
+                "test_end":    test_data.index[-1],
+                "mape":        mape,
+                "mse":         mse,
+                "r2":          r2,
+                "predictions": predictions.tolist(),
+                "actuals":     y_test_arr.tolist(),
+                "params_used": window_params,
             })
         
         # Calculate overall metrics
